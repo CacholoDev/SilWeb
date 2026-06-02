@@ -43,6 +43,7 @@ Use when you need to:
 - Application properties and profiles
 - Bean lifecycle and configuration
 - DevTools and hot reload
+- Use Lombok for boilerplate reduction (@Data,@NoArgsConstructor, @AllArgsConstructor,@Builder...)
 
 ### REST API Development
 - @RestController and @RequestMapping

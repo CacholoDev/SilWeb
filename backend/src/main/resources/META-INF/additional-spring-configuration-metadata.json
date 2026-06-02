@@ -1,0 +1,52 @@
+{"properties": [
+  {
+    "name": "app.cors.allowed-origin",
+    "type": "java.lang.String",
+    "description": "A description for 'app.cors.allowed-origin'"
+  },
+  {
+    "name": "app.security.jwt.secret",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.jwt.secret'"
+  },
+  {
+    "name": "app.security.jwt.expiration-minutes",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.jwt.expiration-minutes'"
+  },
+  {
+    "name": "app.security.jwt.issuer",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.jwt.issuer'"
+  },
+  {
+    "name": "app.security.users.admin.username",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.users.admin.username'"
+  },
+  {
+    "name": "app.security.users.customer.username",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.users.customer.username'"
+  },
+  {
+    "name": "app.security.users.admin.password",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.users.admin.password'"
+  },
+  {
+    "name": "app.security.users.admin.roles",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.users.admin.roles'"
+  },
+  {
+    "name": "app.security.users.customer.password",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.users.customer.password'"
+  },
+  {
+    "name": "app.security.users.customer.roles",
+    "type": "java.lang.String",
+    "description": "A description for 'app.security.users.customer.roles'"
+  }
+]}

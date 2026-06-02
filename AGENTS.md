@@ -16,6 +16,7 @@
 - Usar `.agents/skills/frontend-design` para UI y maquetación.
 - Usar `.agents/skills/accessibility` cuando haya que mejorar accesibilidad.
 - Usar `.agents/skills/seo` cuando haya que optimizar contenido público.
+- Usar `.agents/skills/security` para secretos, variables de entorno, Docker seguro y hardening básico.
 
 ## Repo Notes
 - `skills-lock.json` debe permanecer en la raíz del workspace.
