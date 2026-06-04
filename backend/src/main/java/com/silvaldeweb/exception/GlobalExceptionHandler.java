@@ -14,6 +14,11 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.silvaldeweb.exception.category.CategoryAlreadyExistsException;
+import com.silvaldeweb.exception.category.CategoryNotFoundException;
+import com.silvaldeweb.exception.product.ProductAlreadyExistsException;
+import com.silvaldeweb.exception.product.ProductNotFoundException;
+
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
@@ -48,6 +53,50 @@ public class GlobalExceptionHandler {
         ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
         problemDetail.setTitle("Access denied");
         problemDetail.setDetail("You do not have permission to access this resource.");
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(CategoryNotFoundException.class)
+    public ProblemDetail handleCategoryNotFound(CategoryNotFoundException exception,
+                                                HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Category not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(CategoryAlreadyExistsException.class)
+    public ProblemDetail handleCategoryConflict(CategoryAlreadyExistsException exception,
+                                                HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problemDetail.setTitle("Category conflict");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(ProductNotFoundException.class)
+    public ProblemDetail handleProductNotFound(ProductNotFoundException exception,
+                                               HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Product not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(ProductAlreadyExistsException.class)
+    public ProblemDetail handleProductConflict(ProductAlreadyExistsException exception,
+                                               HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problemDetail.setTitle("Product conflict");
+        problemDetail.setDetail(exception.getMessage());
         problemDetail.setProperty("path", request.getRequestURI());
         problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
         return problemDetail;

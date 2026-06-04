@@ -173,12 +173,4 @@ Medidas aplicadas ahora mismo:
 - contraseñas con BCrypt;
 - roles desde el login.
 
-## 6. Próximo paso lógico
-
-Cuando toque pasar de demo técnica a aplicación real, el siguiente cambio debería ser:
-
-- usuarios en MySQL en vez de en memoria;
-- tablas de roles y permisos;
-- registro de usuarios;
-- refresh tokens si hace falta;
-- endpoints protegidos por roles (`ADMIN`, `CUSTOMER`).
+## 6. 

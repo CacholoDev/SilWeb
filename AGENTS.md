@@ -10,6 +10,7 @@
 - Preferir el código existente y evitar refactors amplios si no son necesarios.
 - Antes de cambios grandes, confirmar la dirección con el usuario.
 - No introducir secretos ni credenciales en el repositorio.
+- Programar pensando en futura escabilidad del proyecto y no programar para "salir del paso rápido", ni tampoco programar para que solo funcione, repito, programar pensando que implementaremos futuras funcionalidades de la tienda del hogar.
 
 ## Skills
 - Usar `.agents/skills/backend-springBoot/java-spring-boot` para tareas del backend Java/Spring.
@@ -22,3 +23,4 @@
 - `skills-lock.json` debe permanecer en la raíz del workspace.
 - La carpeta `.agents/skills` es la ubicación correcta para las skills del proyecto.
 - Mantener la estructura `backend/` y `frontend/` como separación principal del proyecto.
+- Checkear paulatinamente el `README.md` y el `doc.md` (raíz del projecto), para actualizar contexto y ir modificando con las nuevas funcionalidades el `doc.md` sin exponer fallos de ciberseguridad.

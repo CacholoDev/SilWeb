@@ -48,17 +48,21 @@ class AuthServiceTest {
                 .roles("ADMIN")
                 .build();
 
+        // Arrange mocks so AuthService can run without Spring or a database.
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
         when(authentication.getPrincipal()).thenReturn(userDetails);
         when(jwtService.generateToken(userDetails)).thenReturn("jwt-token");
 
+        // Act
         AuthResponse response = authService.login(request);
 
+        // Assert response contents
         assertEquals("jwt-token", response.token());
         assertEquals("admin", response.username());
         assertEquals(List.of("ROLE_ADMIN"), response.roles());
         assertEquals("Bearer", response.tokenType());
 
+        // Assert the exact credentials used to authenticate.
         ArgumentCaptor<UsernamePasswordAuthenticationToken> captor = ArgumentCaptor.forClass(UsernamePasswordAuthenticationToken.class);
         verify(authenticationManager).authenticate(captor.capture());
         assertEquals("admin", captor.getValue().getPrincipal());
@@ -70,12 +74,15 @@ class AuthServiceTest {
     void loginWrapsBadCredentialsAsUnauthorizedFailure() {
         LoginRequest request = new LoginRequest("admin", "wrong-password");
 
+        // Arrange: authentication fails.
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
                 .thenThrow(new BadCredentialsException("Invalid login"));
 
+        // Act + Assert: service surfaces a controlled error message.
         BadCredentialsException exception = assertThrows(BadCredentialsException.class, () -> authService.login(request));
         assertEquals("Invalid username or password.", exception.getMessage());
 
+        // Token generation must not happen on failed login.
         verify(jwtService, never()).generateToken(any());
     }
 }
