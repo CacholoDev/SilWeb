@@ -1,7 +1,7 @@
 package com.silvaldeweb.dto.product;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 public record ProductResponse(
         Long id,
@@ -13,7 +13,7 @@ public record ProductResponse(
         Boolean active,
         Long categoryId,
         String categoryName,
-        OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        Instant createdAt,
+        Instant updatedAt
 ) {
 }

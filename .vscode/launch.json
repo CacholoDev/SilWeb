@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot - BackendApplication",
+      "request": "launch",
+      "mainClass": "com.silvaldeweb.BackendApplication",
+      "projectName": "backend",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "SPRING_DATASOURCE_URL": "jdbc:mysql://localhost:3306/silvalde_web_db?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC",
+        "APP_CORS_ALLOWED_ORIGIN": "http://localhost:5173"
+      }
+    }
+  ]
+}

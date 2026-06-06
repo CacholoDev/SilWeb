@@ -1,13 +1,13 @@
 package com.silvaldeweb.dto.category;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 public record CategoryResponse(
         Long id,
         String name,
         String description,
         Boolean active,
-        OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        Instant createdAt,
+        Instant updatedAt
 ) {
 }

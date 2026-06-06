@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -60,8 +60,8 @@ class ProductControllerTest {
                 true,
                 1L,
                 "Home",
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z")
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z")
         );
 
         when(productService.create(any(ProductCreateRequest.class))).thenReturn(response);
@@ -96,8 +96,8 @@ class ProductControllerTest {
                 true,
                 1L,
                 "Home",
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z")
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z")
         );
 
         when(productService.list(null, null)).thenReturn(List.of(response));
@@ -119,8 +119,8 @@ class ProductControllerTest {
                 true,
                 1L,
                 "Home",
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z")
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z")
         );
 
         when(productService.get(2L)).thenReturn(response);
@@ -143,8 +143,8 @@ class ProductControllerTest {
                 false,
                 2L,
                 "Kitchen",
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z")
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z")
         );
 
         when(productService.update(any(Long.class), any(ProductUpdateRequest.class))).thenReturn(response);

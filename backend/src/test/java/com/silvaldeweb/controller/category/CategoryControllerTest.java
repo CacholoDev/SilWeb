@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -50,8 +50,8 @@ class CategoryControllerTest {
     @Test
     void createReturnsCreatedCategory() throws Exception {
         CategoryResponse response = new CategoryResponse(1L, "Home", "Desc", true,
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"));
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z"));
 
         when(categoryService.create(any(CategoryCreateRequest.class))).thenReturn(response);
 
@@ -68,8 +68,8 @@ class CategoryControllerTest {
     @Test
     void listReturnsCategories() throws Exception {
         CategoryResponse response = new CategoryResponse(1L, "Home", "Desc", true,
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"));
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z"));
 
         when(categoryService.list(null)).thenReturn(List.of(response));
 
@@ -81,8 +81,8 @@ class CategoryControllerTest {
     @Test
     void getReturnsCategory() throws Exception {
         CategoryResponse response = new CategoryResponse(2L, "Kitchen", "Desc", true,
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"));
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z"));
 
         when(categoryService.get(2L)).thenReturn(response);
 
@@ -95,8 +95,8 @@ class CategoryControllerTest {
     @Test
     void updateReturnsUpdatedCategory() throws Exception {
         CategoryResponse response = new CategoryResponse(3L, "Updated", "Desc", false,
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"),
-                OffsetDateTime.parse("2026-06-03T10:00:00Z"));
+                Instant.parse("2026-06-03T10:00:00Z"),
+                Instant.parse("2026-06-03T10:00:00Z"));
 
         when(categoryService.update(any(Long.class), any(CategoryUpdateRequest.class))).thenReturn(response);
 

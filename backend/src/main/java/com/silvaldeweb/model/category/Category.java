@@ -1,6 +1,6 @@
 package com.silvaldeweb.model.category;
 
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -45,9 +45,9 @@ public class Category {
 
     @Column(nullable = false, updatable = false)
     @CreatedDate
-    private OffsetDateTime createdAt;
+    private Instant createdAt;
 
     @Column(nullable = false)
     @LastModifiedDate
-    private OffsetDateTime updatedAt;
+    private Instant updatedAt;
 }

@@ -1,7 +1,7 @@
 package com.silvaldeweb.model.product;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
+import java.time.Instant;
 
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -64,9 +64,9 @@ public class Product {
 
     @Column(nullable = false, updatable = false)
     @CreatedDate
-    private OffsetDateTime createdAt;
+    private Instant createdAt;
 
     @Column(nullable = false)
     @LastModifiedDate
-    private OffsetDateTime updatedAt;
+    private Instant updatedAt;
 }
