@@ -55,6 +55,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             .map(GrantedAuthority.class::cast)
                             .toList();
 
+                    log.info("JWT valid for {} {} as user='{}' authorities={}",
+                            request.getMethod(), request.getRequestURI(), userDetails.getUsername(), authorities);
+
                     UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
                             null,
@@ -65,7 +68,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
             }
         } catch (JwtException exception) {
-            log.debug("Invalid JWT for {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage());
+            log.warn("Invalid JWT for {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage());
             SecurityContextHolder.clearContext();
         }
 

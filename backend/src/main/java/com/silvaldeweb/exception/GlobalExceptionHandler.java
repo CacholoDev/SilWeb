@@ -16,10 +16,13 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.silvaldeweb.exception.address.AddressNotFoundException;
 import com.silvaldeweb.exception.category.CategoryAlreadyExistsException;
 import com.silvaldeweb.exception.category.CategoryNotFoundException;
 import com.silvaldeweb.exception.product.ProductAlreadyExistsException;
 import com.silvaldeweb.exception.product.ProductNotFoundException;
+import com.silvaldeweb.exception.user.UserAlreadyExistsException;
+import com.silvaldeweb.exception.user.UserNotFoundException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -100,6 +103,39 @@ public class GlobalExceptionHandler {
                                                HttpServletRequest request) {
         ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problemDetail.setTitle("Product conflict");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(AddressNotFoundException.class)
+    public ProblemDetail handleAddressNotFound(AddressNotFoundException exception,
+                                                HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Address not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ProblemDetail handleUserNotFound(UserNotFoundException exception,
+                                            HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("User not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(UserAlreadyExistsException.class)
+    public ProblemDetail handleUserConflict(UserAlreadyExistsException exception,
+                                            HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problemDetail.setTitle("User conflict");
         problemDetail.setDetail(exception.getMessage());
         problemDetail.setProperty("path", request.getRequestURI());
         problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());

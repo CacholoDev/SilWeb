@@ -1,18 +1,19 @@
 package com.silvaldeweb.service;
 
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import static org.mockito.ArgumentMatchers.any;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -42,47 +43,40 @@ class AuthServiceTest {
 
     @Test
     void loginReturnsJwtAndUserData() {
-        LoginRequest request = new LoginRequest("admin", "secret123");
-        UserDetails userDetails = User.withUsername("admin")
+        LoginRequest request = new LoginRequest("admin@example.com", "secret123");
+        UserDetails userDetails = User.withUsername("admin@example.com")
                 .password("encoded-password")
                 .roles("ADMIN")
                 .build();
 
-        // Arrange mocks so AuthService can run without Spring or a database.
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
         when(authentication.getPrincipal()).thenReturn(userDetails);
         when(jwtService.generateToken(userDetails)).thenReturn("jwt-token");
 
-        // Act
         AuthResponse response = authService.login(request);
 
-        // Assert response contents
         assertEquals("jwt-token", response.token());
-        assertEquals("admin", response.username());
+        assertEquals("admin@example.com", response.email());
         assertEquals(List.of("ROLE_ADMIN"), response.roles());
         assertEquals("Bearer", response.tokenType());
 
-        // Assert the exact credentials used to authenticate.
         ArgumentCaptor<UsernamePasswordAuthenticationToken> captor = ArgumentCaptor.forClass(UsernamePasswordAuthenticationToken.class);
         verify(authenticationManager).authenticate(captor.capture());
-        assertEquals("admin", captor.getValue().getPrincipal());
+        assertEquals("admin@example.com", captor.getValue().getPrincipal());
         assertEquals("secret123", captor.getValue().getCredentials());
         verify(jwtService).generateToken(userDetails);
     }
 
     @Test
     void loginWrapsBadCredentialsAsUnauthorizedFailure() {
-        LoginRequest request = new LoginRequest("admin", "wrong-password");
+        LoginRequest request = new LoginRequest("admin@example.com", "wrong-password");
 
-        // Arrange: authentication fails.
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
                 .thenThrow(new BadCredentialsException("Invalid login"));
 
-        // Act + Assert: service surfaces a controlled error message.
         BadCredentialsException exception = assertThrows(BadCredentialsException.class, () -> authService.login(request));
-        assertEquals("Invalid username or password.", exception.getMessage());
+        assertEquals("Invalid email or password.", exception.getMessage());
 
-        // Token generation must not happen on failed login.
         verify(jwtService, never()).generateToken(any());
     }
 }

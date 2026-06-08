@@ -43,7 +43,8 @@ Use when you need to:
 - Application properties and profiles
 - Bean lifecycle and configuration
 - DevTools and hot reload
-- Use Lombok for boilerplate reduction (@Data,@NoArgsConstructor, @AllArgsConstructor,@Builder...)
+- Use Lombok for boilerplate reduction (`@Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor`).
+  - **`@Data` is NOT a drop-in replacement for entities.** `@Data` adds `@EqualsAndHashCode` over all fields (breaks Hibernate entity identity and lazy proxies), and `@ToString` over relationships (throws `LazyInitializationException` outside session). On JPA entities use the explicit annotations. `@Data` is fine on plain POJOs / value objects / non-persisted classes.
 
 ### REST API Development
 - @RestController and @RequestMapping

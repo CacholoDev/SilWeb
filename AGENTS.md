@@ -49,7 +49,7 @@ No hay CI ni pre-commit hooks configurados.
 ## Convenciones del repo
 
 ### Backend (paquetes por feature)
-Cada feature nueva (p. ej. `order`, `customer`) replica esta estructura bajo `com.silvaldeweb`:
+Cada feature nueva (p. ej. `order`, `address`) replica esta estructura bajo `com.silvaldeweb`:
 
 ```
 <feature>/
@@ -63,8 +63,46 @@ Cada feature nueva (p. ej. `order`, `customer`) replica esta estructura bajo `co
 
 - Las excepciones se registran en `exception/GlobalExceptionHandler.java` (devuelve `ProblemDetail` RFC 7807 con `path` y `timestamp`). Añadir handler ahí al crear excepciones nuevas.
 - DTOs son `record` inmutables.
-- Entidades y DTOs usan Lombok (`@Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor`). Controllers y services usan solo `@RequiredArgsConstructor`.
-- Auth actual: usuarios **in-memory** en `SecurityConfig` (bootstrap). El plan es migrar a MySQL; no asumir persistencia de usuarios todavía.
+- **Lombok en entities**: `@Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor` (explícitos, NO `@Data`). `@ToString` solo si hace falta, marcando con `@ToString.Exclude` los campos sensibles (passwords) y las relaciones lazy.
+- **Lombok en controllers/services**: solo `@RequiredArgsConstructor`.
+- **Por qué NO `@Data` en entities JPA**: `@Data` añade `@EqualsAndHashCode` sobre todos los campos, lo que rompe con Hibernate (entities con mismo contenido pero distinto id se consideran iguales; proxies lazy hacen fallar `equals()`). También mete `@ToString` y `@RequiredArgsConstructor` que entran en conflicto con JPA. Si en un futuro una clase NO es entity JPA y quieres `@Data` (POJO plano, value object), úsalo con normalidad.
+- Auth actual: **DB-backed**. `DbUserDetailsService` carga usuarios de la tabla `users` por email. `DataSeeder` siembra `admin@example.com` y `customer@example.com` en el primer arranque (lee credenciales de `.env`). `LoginRequest` usa el campo `email` (no `username`).
+
+### Backend (logging — obligatorio)
+Toda clase con lógica de negocio o de infraestructura lleva `org.slf4j.Logger`:
+
+```java
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+private static final Logger log = LoggerFactory.getLogger(NombreClase.class);
+```
+
+Convenciones:
+- **Services**: `log.info` al entrar con parámetros relevantes, `log.info` al terminar con éxito, `log.warn` en reglas de negocio violadas (e.g. SKU duplicado), `log.error(..., exception)` con stack trace en fallos inesperados. `delete` siempre va con `try/catch` que re-lanza tras loguear el motivo.
+- **Controllers**: `log.info` por cada request entrante (`POST /api/categories name='X'`). Cero lógica de negocio en el controller.
+- **Filtros de seguridad** (`JwtAuthenticationFilter`): `log.info` cuando un token se valida (`JWT valid for DELETE /api/categories/1 as user='admin' authorities=[ROLE_ADMIN]`), `log.warn` en tokens inválidos.
+- **Exception handler**: `log.error(..., exception)` con stack en `handleGenericException` (catch-all). El resto puede usar `log.debug` para no spamear.
+- **Niveles**: INFO en operación normal, WARN en situación anómala esperada, ERROR en fallo. No loguear secretos (passwords, tokens, JWT secret).
+
+### Backend (validaciones — obligatorio)
+Toda Request DTO lleva anotaciones de Bean Validation. Errores devuelven 400 con `ProblemDetail` (manejado por `GlobalExceptionHandler.handleValidationException`).
+
+Checklist al crear/editar un DTO:
+- **Strings requeridos**: `@NotBlank` (no confundir con `@NotEmpty` ni `@NotNull`).
+- **Longitud**: `@Size(min=..., max=...)` siempre que aplique.
+- **Email**: `@Email` además de `@NotBlank` y `@Size(max=255)`.
+- **Unique fields**: la columna de la entity lleva `unique=true`; el DTO no lo repite (lo gestiona la BD + la excepción `AlreadyExists`).
+- **Números positivos**: `@Positive` (estricto) o `@PositiveOrZero` (admite 0). Para decimales usar `@DecimalMin(value="0.0")` con mensaje claro.
+- **Stock/cantidades**: `@Min(0)` o `@Min(1)` según la regla de negocio.
+- **Teléfonos / códigos**: `@Pattern(regexp="^[0-9]{9}$")` con mensaje descriptivo.
+- **Campos opcionales**: nada de `@NotNull`. Los `Boolean active` y enums como `Role` suelen ser opcionales (la entity tiene defaults).
+- **Mensajes**: siempre en español y describiendo el problema (e.g. `"El email debe tener un formato válido"`).
+
+Convenciones de seguridad en la entity (no en el DTO):
+- **Passwords**: `@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)` para que Jackson NUNCA serialize la entity con la password. `@ToString.Exclude` si la entity tiene `@ToString` (defense in depth).
+- **Relaciones lazy / bidireccionales**: `@JsonIgnore` para evitar loops en serialización, `@ToString.Exclude` para evitar `LazyInitializationException` en `toString()`.
+- **Enums**: `@Enumerated(EnumType.STRING)` (no `ORDINAL`) para que la BD sea legible y no se rompa al reordenar valores.
 
 ### Frontend
 - JavaScript puro, sin TypeScript. `eslint.config.js` aplica `js.configs.recommended` + `react-hooks` + `react-refresh`.

@@ -1,64 +1,71 @@
 ## Silvalde Web
 
-## Contexto
+Tienda online + panel de administración para un negocio de hogar. Monorepo con backend Spring Boot y frontend React, orquestados con Docker.
 
-Estoy desarrollando una aplicación web completa para un pequeño negocio del hogar que quiere vender sus productos online y gestionar toda la tienda desde casa. La idea es que los clientes puedan ver productos, consultar información y comprar desde casa, mientras el dueño gestiona el catálogo y los pedidos desde un panel de administración, todo adaptado a futuras mejoras y integraciones.
+## Estado actual
 
-El proyecto se construye paso a paso, con cambios pequeños y verificables, para que sea fácil de entender, mantener y ampliar en el futuro siguiendo unas buenas prácticas tanto de programación como de ciberseguridad.
+- **Backend**: API REST con Spring Boot 4 + JPA + Spring Security (JWT) + MySQL. CRUD de `categories`, `products` y `users`. Logger SLF4J en services, controllers y filtros. Perfiles `local` y `prod`. DevTools para live reload.
+- **Frontend**: scaffold React 19 + Vite + Tailwind v4. Sin router ni páginas todavía; pendiente construir UI.
+- **Infra**: Docker Compose con `mysql`, `backend` y `frontend` (Nginx). Nginx hace proxy de `/api/*` al backend para evitar CORS en producción.
 
-### Qué vamos a hacer
-- Crear una tienda online moderna, fácil de usar, escalable y mantenible.
-- Montar un panel de administración para gestionar productos, categorías, pedidos, métricas futuras funciones o mejoras.
-- Preparar una base técnica limpia para crecer sin rehacerlo todo después.
+## Documentación
 
-### Información más detallada
-Checkear el `doc.md`
+- `doc.md`: notas técnicas (stack, arquitectura, modelo de datos, API REST, dev local, seguridad, roadmap).
+- `AGENTS.md`: normas de trabajo y convenciones del repo (paquetes, logging, gotchas, skills).
+- `frontend/README.md`: boilerplate por defecto de Vite, ignorable.
 
-### Arranque local con Docker
+## Arranque rápido con Docker
+
 Desde la raíz del proyecto:
 
 ```bash
 docker compose up --build
 ```
 
-Servicios:
-- Frontend y Nginx: `http://localhost`
+Servicios expuestos:
+- Frontend (Nginx): `http://localhost`
 - Backend: `http://localhost:8080`
 - MySQL: `localhost:3306`
 
-### Estructura
-- `backend/`: API Spring Boot, configuración de base de datos y contenedorización del backend
-- `frontend/`: app React servida con Nginx
-- `docker-compose.yml`: orquestación completa de MySQL, backend y frontend
+Login por defecto (en `.env`):
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<APP_ADMIN_PASSWORD>"}'
+```
 
-### Stack
-- Backend: Java, Spring Boot y MySQL
-- Frontend: React, Vite, JavaScript y Tailwind
-- Infraestructura: Docker y Nginx
+## Dev local sin Docker
 
-### Versiones / Roadmap
-1. Roadmap de la primera versión (sujeta a cambios) para salir a producción :
-- **Admin**:
-- Gestión de productos.
-- Gestión de categorías.
-- Gestión de stock.
-- Gestión de pedidos.
-- Gestión de clientes.
-- Dashboard con métricas.
-- **Clientes**:
-- Registro.
-- Login.
-- Gestión de perfil.
-- Direcciones.
-- Historial de pedidos.
-- Carrito.
-- Realización de pedidos.
-- **Métricas para el administrador**
-- Ventas totales.
-- Ventas por mes.
-- Ventas por categoría.
-- Productos más vendidos.
-- Clientes más activos.
-- Ticket medio.
-- Pedidos pendientes.
-- Evolución de ingresos.
+Para iterar con hot reload en backend:
+
+```bash
+# 1. Levantar MySQL y frontend en Docker
+docker compose up mysql frontend -d
+
+# 2. Asegúrate de tener SPRING_PROFILES_ACTIVE=local en .env
+
+# 3. Backend local
+cd backend && ./mvnw spring-boot:run
+
+# Frontend con HMR
+cd frontend && npm run dev   # puerto 5173
+```
+
+## Estructura
+
+- `backend/`: API Spring Boot + `Dockerfile` + `docker-compose.yml` (alternativa).
+- `frontend/`: SPA React + `Dockerfile` + `nginx.conf`.
+- `docker-compose.yml` (raíz): stack completo.
+- `.env` / `.env.example`: secretos y perfil activo.
+
+## Stack
+
+- **Backend**: Java 21, Spring Boot 4.0.6, Spring Data JPA, Spring Security, JJWT 0.12.5, Lombok, MySQL 8 (prod) / H2 (tests).
+- **Frontend**: React 19, Vite 8, JavaScript (sin TS), Tailwind v4.
+- **Infra**: Docker, Nginx.
+
+## Roadmap (v1)
+
+- **Admin**: gestión de productos, categorías, stock, pedidos, clientes, dashboard.
+- **Clientes**: registro, login, perfil, direcciones, historial, carrito, pedidos.
+- **Métricas**: ventas totales/por mes/por categoría, productos más vendidos, clientes más activos, ticket medio, pedidos pendientes, evolución de ingresos.

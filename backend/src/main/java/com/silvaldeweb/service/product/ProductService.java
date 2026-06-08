@@ -2,6 +2,8 @@ package com.silvaldeweb.service.product;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,15 +24,19 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ProductService {
 
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
+
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
 
     @Transactional
     public ProductResponse create(ProductCreateRequest request) {
+        log.info("Creating product sku='{}' name='{}'", request.sku(), request.name());
         String name = request.name().trim();
         String sku = request.sku().trim();
 
         if (productRepository.existsBySkuIgnoreCase(sku)) {
+            log.warn("Product sku='{}' already exists, refusing to create", sku);
             throw new ProductAlreadyExistsException(sku);
         }
 
@@ -50,11 +56,13 @@ public class ProductService {
         }
 
         Product saved = productRepository.save(builder.build());
+        log.info("Product created id={} sku='{}'", saved.getId(), saved.getSku());
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public List<ProductResponse> list(Boolean active, Long categoryId) {
+        log.info("Listing products active={} categoryId={}", active, categoryId);
         List<Product> products;
         if (active == null && categoryId == null) {
             products = productRepository.findAll();
@@ -66,21 +74,25 @@ public class ProductService {
             products = productRepository.findByCategoryId(categoryId);
         }
 
+        log.info("Found {} products", products.size());
         return products.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public ProductResponse get(Long id) {
+        log.info("Getting product id={}", id);
         return toResponse(findById(id));
     }
 
     @Transactional
     public ProductResponse update(Long id, ProductUpdateRequest request) {
+        log.info("Updating product id={} newSku='{}'", id, request.sku());
         Product product = findById(id);
         String name = request.name().trim();
         String sku = request.sku().trim();
 
         if (!product.getSku().equalsIgnoreCase(sku) && productRepository.existsBySkuIgnoreCase(sku)) {
+            log.warn("Product sku='{}' already exists, refusing to update", sku);
             throw new ProductAlreadyExistsException(sku);
         }
 
@@ -100,13 +112,25 @@ public class ProductService {
         }
 
         Product saved = productRepository.save(product);
+        log.info("Product updated id={}", saved.getId());
         return toResponse(saved);
     }
 
     @Transactional
     public void delete(Long id) {
-        Product product = findById(id);
-        productRepository.delete(product);
+        log.info("Deleting product id={}", id);
+        try {
+            Product product = findById(id);
+            log.info("Product id={} found, executing delete", id);
+            productRepository.delete(product);
+            log.info("Product id={} deleted", id);
+        } catch (ProductNotFoundException exception) {
+            log.warn("Delete failed: product id={} not found", id);
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.error("Delete failed for product id={}", id, exception);
+            throw exception;
+        }
     }
 
     private Product findById(Long id) {

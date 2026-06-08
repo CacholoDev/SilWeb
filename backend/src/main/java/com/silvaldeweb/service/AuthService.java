@@ -26,7 +26,7 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         try {
             Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.username(), request.password())
+                    new UsernamePasswordAuthenticationToken(request.email(), request.password())
             );
 
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
@@ -37,7 +37,7 @@ public class AuthService {
 
             return new AuthResponse(token, userDetails.getUsername(), roles, "Bearer");
         } catch (org.springframework.security.core.AuthenticationException exception) {
-            throw new BadCredentialsException("Invalid username or password.");
+            throw new BadCredentialsException("Invalid email or password.");
         }
     }
 }

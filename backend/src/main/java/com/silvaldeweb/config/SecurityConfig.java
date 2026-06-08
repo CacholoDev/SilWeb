@@ -1,8 +1,6 @@
 package com.silvaldeweb.config;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -13,17 +11,16 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import com.silvaldeweb.repository.user.UserRepository;
 
 @Configuration
 public class SecurityConfig {
@@ -58,18 +55,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public UserDetailsService userDetailsService(
-            @Value("${app.security.users.admin.username:admin}") String adminUsername,
-            @Value("${app.security.users.admin.password:change_me_admin_password}") String adminPassword,
-            @Value("${app.security.users.admin.roles:ADMIN}") String adminRoles,
-            @Value("${app.security.users.customer.username:customer}") String customerUsername,
-            @Value("${app.security.users.customer.password:change_me_customer_password}") String customerPassword,
-            @Value("${app.security.users.customer.roles:CUSTOMER}") String customerRoles,
-            PasswordEncoder passwordEncoder) {
-        return new InMemoryUserDetailsManager(
-                buildUser(adminUsername, adminPassword, adminRoles, passwordEncoder),
-                buildUser(customerUsername, customerPassword, customerRoles, passwordEncoder)
-        );
+    public UserDetailsService userDetailsService(UserRepository userRepository) {
+        return new DbUserDetailsService(userRepository);
     }
 
     @Bean
@@ -89,18 +76,5 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
-    }
-
-    private UserDetails buildUser(String username, String password, String rolesValue, PasswordEncoder passwordEncoder) {
-        String[] roles = Arrays.stream(rolesValue.split(","))
-                .map(String::trim)
-                .filter(role -> !role.isBlank())
-                .map(role -> role.toUpperCase(Locale.ROOT))
-                .toArray(String[]::new);
-
-        return User.withUsername(username)
-                .password(passwordEncoder.encode(password))
-                .roles(roles)
-                .build();
     }
 }

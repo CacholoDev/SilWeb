@@ -20,6 +20,8 @@ Use this skill when the project needs a security-first review or implementation.
 - Keep Docker Compose values configurable through environment variables.
 - Prefer least privilege for users, services, and containers.
 - Treat production settings as explicit, not implied by defaults.
+- **Validate all inputs at the API boundary** with Bean Validation (`@NotBlank`, `@Size`, `@Email`, `@Pattern`, `@DecimalMin`, etc.) on request DTOs. Never trust client payloads.
+- **Passwords in entities**: always add `@JsonProperty(access = WRITE_ONLY)` and `@ToString.Exclude` so the hash is never serialized in responses or printed in `toString()`. Store only BCrypt hashes, never plain text.
 
 ## Typical Checks
 - Search for hardcoded secrets.

@@ -1,176 +1,261 @@
-# Silvalde Web - Technical Notes
+# Silvalde Web - Notas técnicas
 
-Este documento sirve como referencia técnica interna. Aquí se explica la configuración del proyecto, el bloque de seguridad y cómo encaja todo para que luego sea más fácil ampliar el sistema.
+Referencia técnica interna. Se actualiza con cada nueva funcionalidad (entidad, endpoint, config nueva). Para arrancar el proyecto ver `README.md`; para normas de trabajo ver `AGENTS.md`.
 
-## 1. Estructura general
+## 1. Resumen
 
-- `backend/`: API Spring Boot.
-- `frontend/`: interfaz React con Vite.
-- `docker-compose.yml`: levanta MySQL, backend y frontend.
-- `.env`: variables locales sensibles, no se sube al repositorio.
-- `.env.example`: plantilla segura de las variables necesarias.
+Tienda online + panel de administración. Monorepo con dos stacks separados orquestados por Docker.
 
-## 2. Variables de entorno
+## 2. Stack
 
-La idea es no escribir secretos en el código ni en el compose. El flujo es este:
+- **Backend**: Spring Boot 4.0.6, Java 21, Spring Data JPA, Spring Security, Spring Validation, JJWT 0.12.5, Lombok, MySQL 8 (prod) / H2 (tests).
+- **Frontend**: React 19, Vite 8, JavaScript (no TS), Tailwind v4, Nginx (prod).
+- **Infra**: Docker Compose, Nginx como reverse proxy.
 
-1. El valor real vive en `.env`.
-2. `docker-compose.yml` lo lee desde el entorno.
-3. Spring Boot lo consume con `@Value` en `application.properties` o directamente en clases de configuración.
+## 3. Estructura del repositorio
 
-Variables actuales importantes:
+- `backend/`: API Spring Boot + `Dockerfile` + `docker-compose.yml` (alternativa solo mysql + backend).
+- `frontend/`: SPA React + `Dockerfile` + `nginx.conf`.
+- `docker-compose.yml` (raíz): stack completo (mysql + backend + frontend).
+- `.env`, `.env.example`: secretos y nombre de perfil. `.env` gitignored.
+- `doc.md` (este archivo), `README.md`, `AGENTS.md`: documentación.
 
-- `MYSQL_ROOT_PASSWORD`
-- `MYSQL_DATABASE`
-- `MYSQL_USER`
-- `MYSQL_PASSWORD`
-- `SPRING_DATASOURCE_URL`
-- `SPRING_DATASOURCE_USERNAME`
-- `SPRING_DATASOURCE_PASSWORD`
-- `APP_CORS_ALLOWED_ORIGIN`
-- `JWT_SECRET`
-- `JWT_EXPIRATION_MINUTES`
-- `JWT_ISSUER`
-- `APP_ADMIN_USERNAME`
-- `APP_ADMIN_PASSWORD`
-- `APP_ADMIN_ROLES`
-- `APP_CUSTOMER_USERNAME`
-- `APP_CUSTOMER_PASSWORD`
-- `APP_CUSTOMER_ROLES`
+## 4. Configuración y entorno
 
-## 3. Docker
+### 4.1 Properties files
 
-### 3.1 `docker-compose.yml`
+- `application.properties` (raíz de `resources/`): defaults sensatos para arrancar sin env vars. Cualquier valor de configuración se lee como `${VAR:default}`.
+- `application-local.properties`: overrides cuando `SPRING_PROFILES_ACTIVE=local` (dev con VS Code). URL `localhost:3306`, CORS `http://localhost:5173`.
+- `application-prod.properties`: overrides cuando `SPRING_PROFILES_ACTIVE=prod` (Docker). URL `mysql:3306`, CORS `http://localhost`.
 
-El compose orquesta tres servicios:
+### 4.2 Variables de entorno (`.env`)
 
-- `mysql`: base de datos MySQL 8.
-- `backend`: API Spring Boot.
-- `frontend`: app React servida por Nginx.
+Solo **secretos** y el nombre de perfil. Las URLs y orígenes CORS **NO** van aquí porque en Spring Boot las OS env vars pisan a los properties files, así que cualquier no-secreto en `.env` ganaría siempre y rompería el otro entorno.
 
-El backend se conecta a MySQL mediante el nombre del servicio (`mysql`) dentro de la red de Docker. Eso evita usar `localhost` dentro del contenedor, que sería incorrecto porque `localhost` ahí apunta al propio contenedor y no a la base de datos.
+| Variable | Tipo | Uso |
+|---|---|---|
+| `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` | secreto | Inicialización del contenedor MySQL |
+| `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | secreto | Conexión backend → MySQL |
+| `JWT_SECRET`, `JWT_EXPIRATION_MINUTES`, `JWT_ISSUER` | secreto | Firma y validación de tokens |
+| `APP_ADMIN_USERNAME`, `APP_ADMIN_PASSWORD`, `APP_ADMIN_ROLES` | secreto | Usuario admin bootstrap (in-memory) |
+| `APP_CUSTOMER_USERNAME`, `APP_CUSTOMER_PASSWORD`, `APP_CUSTOMER_ROLES` | secreto | Usuario customer bootstrap (in-memory) |
+| `SPRING_PROFILES_ACTIVE` | config | `local` (VS Code) o `prod` (Docker) |
 
-### 3.2 `backend/Dockerfile`
+> El rol del cliente es `USER` (no `CUSTOMER`) en el enum `Role`. La env var se llama `APP_CUSTOMER_*` por consistencia con la bootstrap actual pero el valor es `USER`. Pendiente migrar a usuarios en MySQL y renombrar.
 
-Usa una construcción en dos fases:
+### 4.3 Perfiles
 
-- fase `build`: compila el proyecto con Maven;
-- fase `runtime`: ejecuta el `.jar` con una imagen JRE ligera.
+- `prod` (Docker): `SPRING_PROFILES_ACTIVE: prod` hard-codeado en `docker-compose.yml` raíz. Gana sobre `.env`.
+- `local` (VS Code): se setea en `.env` del desarrollador. Carga `application-local.properties` y activa DevTools.
 
-Eso reduce el tamaño final y evita meter herramientas de compilación dentro de la imagen de producción.
+## 5. Docker
 
-### 3.3 `frontend/Dockerfile` y `frontend/nginx.conf`
+### 5.1 `docker-compose.yml` (raíz)
 
-El frontend se construye con Node y luego Nginx sirve el resultado compilado.
+Tres servicios en la red `silvaldeweb-network`:
 
-Nginx también actúa como proxy para `/api`, redirigiendo esas peticiones al backend. Eso permite que el frontend use la misma URL base en producción y que el navegador no tenga problemas de CORS en el dominio final.
+- `mysql` (mysql:8.0): healthcheck con `mysqladmin ping`, volumen `mysql_data` para persistencia, puerto `3306:3306`.
+- `backend` (build local de `./backend/Dockerfile`): expone `8080:8080`, espera a `mysql` healthy.
+- `frontend` (build local de `./frontend/Dockerfile`): expone `80:80`, depende de `backend`.
 
-## 4. Spring Boot backend
+Importante: dentro de la red Docker, el backend se conecta a MySQL por el **nombre del servicio** (`mysql:3306`), no `localhost`.
 
-### 4.1 `application.properties`
+### 5.2 `backend/docker-compose.yml`
 
-La configuración principal lee valores desde variables de entorno.
+Alternativa con solo `mysql` + `backend`, lee `.env` de la raíz con `env_file`. Útil para iterar en backend sin tocar el frontend.
 
-Ejemplos:
+### 5.3 Dockerfiles
 
-- `spring.datasource.url=${SPRING_DATASOURCE_URL:...}`
-- `spring.datasource.username=${SPRING_DATASOURCE_USERNAME:...}`
-- `spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:...}`
-- `app.cors.allowed-origin=${APP_CORS_ALLOWED_ORIGIN:...}`
-- `app.security.jwt.secret=${JWT_SECRET:...}`
+Multi-stage:
 
-La parte importante es el formato `${VARIABLE:valor_por_defecto}`:
+- **Backend**: `maven:3.9-eclipse-temurin-21` (build) → `eclipse-temurin:21-jre` (runtime). Produce `backend-0.0.1-SNAPSHOT.jar`.
+- **Frontend**: `node:22-alpine` (build con `npm install` + `npm run build`) → `nginx:1.27-alpine` sirviendo `dist/`.
 
-- si la variable existe, se usa el valor real;
-- si no existe, se usa el fallback;
-- esto ayuda en local, pero sin meter secretos en el código.
+### 5.4 `frontend/nginx.conf`
 
-### 4.2 `SecurityConfig.java`
+Sirve los assets estáticos y hace proxy de `/api/*` → `http://backend:8080`. Esto evita CORS en el navegador (mismo origen) y permite rutas relativas `/api/...` en el código de frontend.
 
-Esta clase centraliza Spring Security.
+## 6. Backend
 
-Responsabilidades:
+### 6.1 Estructura de paquetes (por feature)
 
-- define el `SecurityFilterChain`;
-- desactiva CSRF para esta API JWT;
-- deja la sesión en modo `STATELESS`;
-- habilita CORS;
-- permite `POST /api/auth/login` sin autenticación;
-- protege el resto de rutas;
-- registra el filtro JWT antes del filtro de autenticación estándar.
+```
+com.silvaldeweb
+├── BackendApplication.java       (entrypoint, @EnableJpaAuditing)
+├── config/                        (Security, JWT)
+├── controller/<feature>/          (REST endpoints)
+├── service/<feature>/             (lógica de negocio)
+├── model/<feature>/               (entidades JPA + enums)
+├── repository/<feature>/          (Spring Data)
+├── dto/<feature>/                 (records inmutables)
+└── exception/
+    ├── GlobalExceptionHandler.java
+    └── <feature>/                 (NotFound, AlreadyExists, ...)
+```
 
-También crea:
+Cada feature replica el mismo layout. Para crear una nueva feature (p. ej. `order`, `address`), copiar la estructura de `category/` o `product/`.
 
-- `AuthenticationManager`: valida login y password;
-- `UserDetailsService`: usuarios en memoria por ahora;
-- `PasswordEncoder`: BCrypt;
-- `CorsConfigurationSource`: controla los orígenes permitidos.
+### 6.2 Entidades JPA
 
-La parte de usuarios en memoria está pensada como paso intermedio. Más adelante se puede cambiar por usuarios reales en MySQL sin tocar toda la arquitectura JWT.
+Todas usan:
+- Lombok: `@Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor`.
+- `@EntityListeners(AuditingEntityListener.class)` para auditoría.
+- `createdAt` y `updatedAt` de tipo `java.time.Instant` con `@CreatedDate` y `@LastModifiedDate`.
+- Hibernate crea/actualiza el schema con `ddl-auto=update`.
 
-### 4.3 `JwtService.java`
+### 6.3 Enums
 
-Esta clase se encarga de trabajar con el token.
+`Role` (en `model/user/`): `ADMIN`, `USER`. Mapeado con `@Enumerated(EnumType.STRING)` para legibilidad en BD.
 
-Hace cuatro cosas:
+### 6.4 JPA Auditing
 
-- genera JWT cuando el login es correcto;
-- incluye `username` y `roles` como claims;
-- valida firma y expiración;
-- extrae usuario y roles del token.
+Habilitado en `BackendApplication` con `@EnableJpaAuditing`. Si se quita, los `createdAt`/`updatedAt` de todas las entidades quedan `null` en silencio.
 
-Conceptos clave:
+### 6.5 Manejo de errores
 
-- `issuer`: identifica quién emite el token;
-- `expirationMinutes`: tiempo de vida del token;
-- `signingKey`: clave con la que se firma el token;
-- `claims`: datos que viajan dentro del JWT.
+`exception/GlobalExceptionHandler` (`@RestControllerAdvice`) captura:
+- `MethodArgumentNotValidException` → 400 con campos fallidos.
+- `AuthenticationException` → 401.
+- `AccessDeniedException` → 403.
+- `<Feature>NotFoundException` → 404.
+- `<Feature>AlreadyExistsException` → 409.
+- `Exception` (catch-all) → 500.
 
-La firma se deriva a partir de `JWT_SECRET`, usando SHA-256 para obtener una clave válida para HMAC.
+Todas las respuestas son `ProblemDetail` (RFC 7807) con `title`, `detail`, `path`, `timestamp`. Al añadir una excepción nueva, registrar su handler aquí.
 
-### 4.4 `JwtAuthenticationFilter.java`
+### 6.6 Logging
 
-Este filtro se ejecuta en cada request.
+Convención (ver AGENTS.md para detalle):
+- SLF4J Logger en services, controllers, filtros de seguridad y exception handler.
+- INFO al entrar/salir de operaciones, WARN en reglas de negocio violadas, ERROR con stack trace en fallos inesperados.
+- No loguear secretos.
 
-Flujo:
+### 6.7 Seguridad (Spring Security + JWT)
 
-1. Lee el header `Authorization`.
-2. Comprueba si empieza por `Bearer `.
-3. Extrae el token.
-4. Valida el token con `JwtService`.
-5. Carga el usuario con `UserDetailsService`.
-6. Si todo es correcto, guarda la autenticación en `SecurityContextHolder`.
+- `config/SecurityConfig.java` define el `SecurityFilterChain`:
+  - CSRF off, sesión `STATELESS`, CORS controlado.
+  - `POST /api/auth/login` y `/actuator/health/**` permitidos sin auth.
+  - Resto requiere JWT válido.
+- `config/JwtService.java`: genera/parsea JWT con JJWT 0.12.5. Firma derivada de `JWT_SECRET` con SHA-256. Claims: `sub` (email), `roles`, `iss`, `iat`, `exp`.
+- `config/JwtAuthenticationFilter.java`: filtro `OncePerRequestFilter` que extrae `Authorization: Bearer <token>`, valida y setea la `Authentication` en `SecurityContextHolder`.
+- `config/DbUserDetailsService.java`: implementa `UserDetailsService` cargando de la tabla `users` por email (no más `InMemoryUserDetailsManager`).
+- `config/DataSeeder.java`: `CommandLineRunner` que siembra `admin@example.com` (rol `ADMIN`) y `customer@example.com` (rol `USER`) en el primer arranque si no existen. Lee credenciales de `APP_ADMIN_*` / `APP_CUSTOMER_*` en `.env`.
+- `AuthenticationManager` + `UserDetailsService`: ahora **DB-backed** (entidad `User`).
+- `PasswordEncoder`: BCrypt.
+- `CorsConfigurationSource`: orígenes y métodos permitidos parametrizados por `app.cors.allowed-origin`.
 
-Esto permite que luego Spring vea al usuario como autenticado durante toda la request.
+### 6.8 DevTools
 
-### 4.5 `AuthController.java`
+`org.springframework.boot:spring-boot-devtools` con `<optional>true</optional>`. Excluido del fat jar por el plugin de Spring Boot (no llega a producción). Activa hot reload al ejecutar el backend en local.
 
-Este controller expone el login:
+## 7. Frontend
 
-- recibe `username` y `password`;
-- usa `AuthenticationManager` para validar credenciales;
-- genera el token con `JwtService`;
-- devuelve un `AuthResponse` con token, usuario y roles.
+- React 19 + Vite 8 + JavaScript (no TypeScript) + Tailwind v4.
+- Tailwind v4 con sintaxis nueva: `@import "tailwindcss";` en `index.css` y plugin `@tailwindcss/vite` en `vite.config.js`. No usar `tailwind.config.js` (no existe).
+- ESLint con `js.configs.recommended` + `react-hooks` + `react-refresh`.
+- `src/App.jsx` es placeholder; no hay router ni páginas todavía.
+- `public/icons.svg` es sprite futuro; `index.html` solo referencia `/favicon.svg`.
 
-### 4.6 DTOs
+## 8. Modelo de datos
 
-`LoginRequest.java` y `AuthResponse.java` son DTOs simples:
+### `categories`
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `name` | VARCHAR(120) | UNIQUE NOT NULL |
+| `description` | VARCHAR(500) | nullable |
+| `active` | BOOLEAN | NOT NULL DEFAULT TRUE |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
 
-- `LoginRequest`: entrada del login;
-- `AuthResponse`: salida del login.
+### `products`
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `name` | VARCHAR(160) | NOT NULL |
+| `sku` | VARCHAR(60) | UNIQUE NOT NULL |
+| `description` | VARCHAR(1000) | nullable |
+| `price` | DECIMAL(12,2) | NOT NULL |
+| `stock` | INT | NOT NULL |
+| `active` | BOOLEAN | NOT NULL DEFAULT TRUE |
+| `category_id` | BIGINT | FK → `categories.id` NOT NULL |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
 
-Se usan records para mantener el código corto e inmutable.
+### `users`
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `email` | VARCHAR(255) | UNIQUE NOT NULL |
+| `password` | VARCHAR(100) | NOT NULL, BCrypt hash |
+| `name` | VARCHAR(120) | NOT NULL |
+| `phone` | VARCHAR(40) | nullable, validado con `@Pattern(^[0-9]{9}$)` en DTO |
+| `active` | BOOLEAN | NOT NULL DEFAULT TRUE |
+| `role` | VARCHAR(20) | NOT NULL, enum (`ADMIN` \| `USER`) |
+| `last_login` | TIMESTAMP | nullable |
+| `email_verified` | BOOLEAN | NOT NULL DEFAULT FALSE |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
 
-## 5. Seguridad actual
+### `addresses`
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `full_name` | VARCHAR(120) | NOT NULL |
+| `street` | VARCHAR(200) | NOT NULL |
+| `city` | VARCHAR(100) | NOT NULL |
+| `province` | VARCHAR(100) | NOT NULL |
+| `postal_code` | VARCHAR(5) | NOT NULL, validado con `@Pattern(^[0-9]{5}$)` en DTO |
+| `country` | VARCHAR(100) | NOT NULL |
+| `is_default` | BOOLEAN | NOT NULL DEFAULT FALSE |
+| `user_id` | BIGINT | FK → `users.id` NOT NULL, LAZY |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
 
-Medidas aplicadas ahora mismo:
+> La relación `@ManyToOne Address → User` lleva `@ToString.Exclude` y `@JsonIgnore` (defense in depth: evita loops en serialización y `LazyInitializationException` en `toString()`).
 
-- secretos fuera del código fuente;
-- `.env` ignorado por git;
-- JWT firmado;
-- API stateless;
-- CORS controlado;
-- contraseñas con BCrypt;
-- roles desde el login.
+## 9. API REST
 
-## 6. 
+Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/auth/login`. Respuestas de error son `ProblemDetail` JSON.
+
+### Auth
+- `POST /api/auth/login` — body `{username, password}` → `{token, username, roles, tokenType}`.
+
+### Categories (`/api/categories`)
+- `POST` crear · `GET` listar (`?active=`) · `GET /{id}` detalle · `PUT /{id}` actualizar · `DELETE /{id}` eliminar.
+
+### Products (`/api/products`)
+- `POST` crear · `GET` listar (`?active=&categoryId=`) · `GET /{id}` detalle · `PUT /{id}` actualizar · `DELETE /{id}` eliminar.
+
+### Users (`/api/users`)
+- `POST` crear (hashea password) · `GET` listar (`?active=&role=`) · `GET /{id}` detalle · `PUT /{id}` actualizar (password opcional) · `DELETE /{id}` eliminar.
+
+### Addresses (`/api/addresses`)
+- `POST` crear · `GET` listar (`?userId=`) · `GET /{id}` detalle · `PUT /{id}` actualizar · `DELETE /{id}` eliminar.
+
+## 10. Dev local
+
+| Escenario | Comando | Notas |
+|---|---|---|
+| Stack completo | `docker compose up --build` (raíz) | MySQL, backend y frontend en Docker. |
+| Solo backend + MySQL | `cd backend && docker compose up --build` | Frontend se gestiona aparte. |
+| Backend local (live reload) | `cd backend && ./mvnw spring-boot:run` con `SPRING_PROFILES_ACTIVE=local` en `.env` | DevTools reinicia al cambiar clases. |
+| Frontend local (HMR) | `cd frontend && npm run dev` | Puerto 5173, CORS ya abierto. |
+| Tests backend | `cd backend && ./mvnw test` | H2 en memoria, no necesita MySQL. |
+| Lint frontend | `cd frontend && npm run lint` | |
+
+## 11. Seguridad aplicada
+
+- Secretos fuera del repo (en `.env`, gitignored).
+- JWT firmado (HS256 sobre `JWT_SECRET` derivado con SHA-256).
+- API stateless, CSRF off, CORS por perfil.
+- Contraseñas con BCrypt.
+- Roles vía enum `Role` (en entidades) y authorities `ROLE_*` (en JWT).
+- Errores sin filtrar stack traces al cliente (`spring.web.error.include-stacktrace=never`).
+
+## 12. Roadmap (v1)
+
+- **Admin**: gestión productos, categorías, stock, pedidos, clientes, dashboard.
+- **Clientes**: registro, login, perfil, direcciones, historial, carrito, pedidos.
+- **Métricas**: ventas totales/por mes/por categoría, productos más vendidos, clientes más activos, ticket medio, pedidos pendientes, evolución de ingresos.
+- **Infra pendiente**: migrar `UserDetailsService` de in-memory a DB (entidad `User`), añadir Address, Order, Cart.
