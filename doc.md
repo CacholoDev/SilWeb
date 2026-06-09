@@ -214,12 +214,64 @@ Convención (ver AGENTS.md para detalle):
 
 > La relación `@ManyToOne Address → User` lleva `@ToString.Exclude` y `@JsonIgnore` (defense in depth: evita loops en serialización y `LazyInitializationException` en `toString()`).
 
+### `orders`
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `order_number` | VARCHAR(40) | UNIQUE NOT NULL, formato `ORD-YYYYMMDDHHMMSS-NNNN` |
+| `customer_id` | BIGINT | FK → `users.id` NOT NULL, LAZY |
+| `status` | VARCHAR(20) | NOT NULL, enum `OrderStatus` |
+| `total` | DECIMAL(19,2) | NOT NULL DEFAULT 0, **siempre recalculado** desde `SUM(order_items.line_total)` |
+| `shipping_address` | VARCHAR(500) | NOT NULL |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
+
+### `order_items`
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `order_id` | BIGINT | FK → `orders.id` NOT NULL, LAZY |
+| `product_id` | BIGINT | FK lógica → `products.id` (sin `@ManyToOne` para mantenerlo ligero) |
+| `quantity` | INT | NOT NULL, `>= 1` |
+| `unit_price` | DECIMAL(19,2) | NOT NULL, snapshot del precio en el momento de compra |
+| `line_total` | DECIMAL(19,2) | NOT NULL, `unitPrice * quantity` |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
+
+### `payments` (1:1 con `orders`)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `order_id` | BIGINT | FK UNIQUE NOT NULL, LAZY (cascade ALL) |
+| `method` | VARCHAR(20) | NOT NULL, enum `PaymentMethod` |
+| `status` | VARCHAR(20) | NOT NULL, enum `PaymentStatus` |
+| `amount` | DECIMAL(19,2) | NOT NULL |
+| `provider_reference` | VARCHAR(200) | nullable, `WRITE_ONLY` (no se devuelve en JSON) |
+| `paid_at` | TIMESTAMP | nullable |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
+
+### `shipments` (1:1 con `orders`)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `order_id` | BIGINT | FK UNIQUE NOT NULL, LAZY (cascade ALL) |
+| `carrier` | VARCHAR(80) | nullable (se rellena al marcar como enviado) |
+| `tracking_number` | VARCHAR(120) | nullable |
+| `status` | VARCHAR(20) | NOT NULL, enum `ShipmentStatus` |
+| `shipped_at` | TIMESTAMP | nullable |
+| `delivered_at` | TIMESTAMP | nullable |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
+
+> Reglas de negocio clave: `Order.total` se calcula en el service y no acepta override (precio histórico fiable). `OrderItem.unitPrice` es snapshot (no se actualiza aunque cambie `Product.price`). Las transiciones de estado están controladas: `PENDING → PAID → SHIPPED → DELIVERED`, con `CANCELLED` como estado terminal (no se puede cancelar un pedido ya enviado o entregado).
+
 ## 9. API REST
 
 Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/auth/login`. Respuestas de error son `ProblemDetail` JSON.
 
 ### Auth
-- `POST /api/auth/login` — body `{username, password}` → `{token, username, roles, tokenType}`.
+- `POST /api/auth/login` — body `{email, password}` → `{token, email, roles, tokenType}`.
 
 ### Categories (`/api/categories`)
 - `POST` crear · `GET` listar (`?active=`) · `GET /{id}` detalle · `PUT /{id}` actualizar · `DELETE /{id}` eliminar.
@@ -232,6 +284,19 @@ Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/aut
 
 ### Addresses (`/api/addresses`)
 - `POST` crear · `GET` listar (`?userId=`) · `GET /{id}` detalle · `PUT /{id}` actualizar · `DELETE /{id}` eliminar.
+
+### Orders (`/api/orders`)
+- `POST /api/orders` (USER/ADMIN) crear — body `{items: [{productId, quantity, unitPrice}], shippingAddress}`. `customerId` se toma del JWT, nunca del body.
+- `GET /api/orders` (USER/ADMIN) listar — `?status=PENDING|PAID|SHIPPED|DELIVERED|CANCELLED`. USER ve solo sus pedidos; ADMIN ve todos.
+- `GET /api/orders/{id}` (USER/ADMIN) detalle — USER solo si es owner; ADMIN siempre.
+- `PUT /api/orders/{id}` (USER/ADMIN) actualizar `shippingAddress` — solo en `PENDING`.
+- `PATCH /api/orders/{id}/pay` (USER/ADMIN) pagar — body `{method, providerReference}`. Transición `PENDING → PAID`. Solo owner o ADMIN.
+- `PATCH /api/orders/{id}/ship` (USER/ADMIN) enviar — body `{carrier, trackingNumber}`. Transición `PAID → SHIPPED`. Solo owner o ADMIN.
+- `PATCH /api/orders/{id}/deliver` (USER/ADMIN) marcar entregado — transita `SHIPPED → DELIVERED` y actualiza `shipment.deliveredAt`.
+- `PATCH /api/orders/{id}/cancel` (USER/ADMIN) cancelar — solo si está en `PENDING` o `PAID`. Bloqueado en `SHIPPED`/`DELIVERED`/`CANCELLED`.
+- `DELETE /api/orders/{id}` (**solo ADMIN**) eliminar.
+
+> Reglas de autorización: el owner se obtiene SIEMPRE del JWT (`AuthUtils.currentUser` resuelve el `User` por email y compara `id` con `Order.customer.id`). Si un USER pide un pedido que no es suyo se lanza `AccessDeniedException` → 403. Los endpoints `/api/orders/**` aceptan tanto USER como ADMIN; `DELETE` es exclusivo de ADMIN vía matcher en `SecurityConfig`. Los recursos `OrderItem`/`Payment`/`Shipment` no tienen controllers propios, se acceden siempre dentro del payload de `Order`.
 
 ## 10. Dev local
 
@@ -258,4 +323,236 @@ Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/aut
 - **Admin**: gestión productos, categorías, stock, pedidos, clientes, dashboard.
 - **Clientes**: registro, login, perfil, direcciones, historial, carrito, pedidos.
 - **Métricas**: ventas totales/por mes/por categoría, productos más vendidos, clientes más activos, ticket medio, pedidos pendientes, evolución de ingresos.
-- **Infra pendiente**: migrar `UserDetailsService` de in-memory a DB (entidad `User`), añadir Address, Order, Cart.
+- **Hecho**: entidad `User` con `UserDetailsService` DB-backed (`DbUserDetailsService`), entidad `Address`, entidad `Order` + `OrderItem` + `Payment` + `Shipment`, Swagger UI 3.0.3 con JWT bearer.
+- **Pendiente**: integración real con un payment provider (Stripe/PayPal) para `Payment.providerReference`, entidad `Cart` + `CartItem`, stock real (`Product.stock -= OrderItem.quantity` al pagar, no al crear), webhooks de shipment.
+
+## 13. Cómo se conecta la aplicación
+
+### 13.1 Topología de despliegue (Docker)
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ Navegador (http://localhost)                              │
+└──────────────────────┬─────────────────────────────────────┘
+                       │ HTTP
+                       ▼
+┌────────────────────────────────────────────────────────────┐
+│ Frontend — Nginx (puerto 80)                              │
+│   Sirve /  → /usr/share/nginx/html (Vite build)           │
+│   Proxy   /api/* → http://backend:8080  (mismo origen)    │
+└──────────────────────┬─────────────────────────────────────┘
+                       │ HTTP /api/...
+                       ▼
+┌────────────────────────────────────────────────────────────┐
+│ Backend — Spring Boot (puerto 8080)                       │
+│   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐  │
+│   │ JwtAuth      │──→│ Controller   │──→│ Service      │  │
+│   │ Filter       │   │ (REST)       │   │ (lógica)     │  │
+│   └──────────────┘   └──────┬───────┘   └──────┬───────┘  │
+│                            │                   │          │
+│                            │                   ▼          │
+│                            │          ┌────────────────┐  │
+│                            │          │ GlobalException│  │
+│                            │          │ Handler        │  │
+│                            │          └────────────────┘  │
+│                            ▼                              │
+│                    ┌──────────────┐                       │
+│                    │ JPA /        │                       │
+│                    │ Hibernate    │                       │
+│                    └──────┬───────┘                       │
+└───────────────────────────┼──────────────────────────────┘
+                            │ JDBC
+                            ▼
+┌────────────────────────────────────────────────────────────┐
+│ MySQL 8 (puerto 3306)                                     │
+│   silvalde_web_db — 8 tablas:                              │
+│   users, categories, products, addresses,                 │
+│   orders, order_items, payments, shipments                │
+└────────────────────────────────────────────────────────────┘
+```
+
+### 13.2 Flujo de una request típica (cliente lista sus pedidos)
+
+```
+1. Browser:    GET http://localhost/api/orders
+2. Nginx:      proxy_pass http://backend:8080/api/orders
+3. Backend:    Spring Security filter chain:
+                 a. JwtAuthenticationFilter extrae "Authorization: Bearer <token>"
+                 b. jwtService.extractUsername() → "customer@example.com"
+                 c. dbUserDetailsService.loadUserByUsername() → UserDetails con ROLE_USER
+                 d. SecurityContextHolder.setAuthentication(...)  (la request ya es "autenticada")
+4. Backend:    DispatcherServlet → OrderController.list(status=null, authentication)
+5. Controller: AuthUtils.currentUser(authentication, userRepository) → User(id=2)
+               AuthUtils.isAdmin(authentication) → false
+               log.info("GET /api/orders userId=2 isAdmin=false status=null")
+6. Controller: orderService.list(userId=2, isAdmin=false, status=null)
+7. Service:    orderRepository.findByCustomerId(2L) → SELECT * FROM orders WHERE customer_id=2
+8. Service:    mapea cada Order → OrderResponse (proyecta user.id, items, payment, shipment)
+9. Controller: retorna List<OrderResponse> (200 OK)
+10. Jackson:   serializa a JSON
+11. Nginx:     devuelve al browser
+12. Browser:   fetch resuelve la Promise → React setState(orders)
+```
+
+### 13.3 Capas del backend (lo que hace cada una)
+
+| Capa | Paquete | Responsabilidad | Lo que NO hace |
+|---|---|---|---|
+| **Filtros** | `config/` | Autenticación (JWT), CORS, CSRF off, sesión stateless | Lógica de negocio |
+| **Controller** | `controller/<feature>/` | Recibir HTTP request, validar body (`@Valid`), llamar al service, loguear entrada/salida, devolver `ResponseEntity` o DTO | Acceso a BD directo, reglas de negocio, mapeo de entity → DTO |
+| **Service** | `service/<feature>/` | Reglas de negocio (ownership, transiciones de estado, cálculo de totales), coordinar repos, mapear entity → DTO, loguear INFO/WARN/ERROR | Conocer HTTP, devolver `ResponseEntity` |
+| **Repository** | `repository/<feature>/` | Queries JPA (derivadas y custom), abstraer SQL | Lógica, validaciones |
+| **Model** | `model/<feature>/` | Entidades JPA con auditoría (`@CreatedDate`/`@LastModifiedDate`), enums, `@ToString.Exclude` + `@JsonIgnore` en relaciones LAZY | DTOs |
+| **DTO** | `dto/<feature>/` | `record` inmutables que viajan por HTTP, con Bean Validation (`@NotBlank`, `@Size`, etc.) | Anotaciones JPA |
+| **Exception** | `exception/<feature>/` y `GlobalExceptionHandler` | Tipos de error de dominio + mapeo a `ProblemDetail` (RFC 7807) con HTTP status correcto | Try/catch en controllers |
+| **Config** | `config/` | Beans (Security, JWT, OpenAPI, AuthUtils, DataSeeder) | Lógica |
+
+### 13.4 Modelo de datos relacional (a día de hoy)
+
+```
+                    ┌──────────┐
+                    │  users   │
+                    └─────┬────┘
+              ┌───────────┼────────────┬──────────────┐
+              │ (1:N)     │ (1:N)       │ (1:N)        │
+              ▼           ▼             ▼              │
+       ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+       │addresses │  │  orders  │  │ (futuro) │        │
+       └──────────┘  └────┬─────┘  │  carts   │        │
+                          │        └──────────┘        │
+                ┌─────────┼─────────┐                  │
+                │ (1:N)   │ (1:1)   │ (1:1)            │
+                ▼         ▼         ▼                  │
+         ┌──────────┐┌────────┐┌──────────┐            │
+         │order_    ││payments││shipments │            │
+         │items     │└────────┘└──────────┘            │
+         └────┬─────┘                                    │
+              │ (FK lógica, no @ManyToOne)              │
+              ▼                                          │
+       ┌──────────┐         ┌──────────┐                │
+       │ products │◄────────│categories│                │
+       └──────────┘  (N:1)  └──────────┘                │
+                                                       │
+       Leyenda: ─── FK JPA ─── FK lógica
+```
+
+Notas:
+- `Order.customer_id` y `Address.user_id` son **FKs JPA** (`@ManyToOne`, validadas por Hibernate y con `ON DELETE` no restrictivo en MySQL).
+- `OrderItem.product_id` es **FK lógica** (un `Long` sin `@ManyToOne`) para mantener `OrderItem` ligero. Si borras un `Product` referenciado, el `OrderItem` queda con un id huérfano — defensa en profundidad con `@JsonIgnore` en la respuesta para no romper la API.
+- `payments.order_id` y `shipments.order_id` son FKs JPA 1:1 con `unique=true`, cascade ALL + orphanRemoval.
+- La relación inversa (User → List<Address>, User → List<Order>) está **explícitamente no mapeada** para mantener la BD limpia y evitar N+1. Si más adelante el admin necesita "todos los pedidos de un usuario", se hace con `findByCustomerId(Long)` en el repository (ya existe).
+
+### 13.5 Cómo encajará Cart (próxima feature)
+
+Cart no es un "mini-pedido": tiene semántica distinta. Diferencias que justifican una entity propia:
+
+| Aspecto | Cart | Order |
+|---|---|---|
+| **Estado** | Activo / Abandonado / Convertido (no hay `PENDING → PAID`, simplemente el cart se vacía al hacer checkout) | `PENDING → PAID → SHIPPED → DELIVERED` (o `CANCELLED`) |
+| **Total** | Recalculado en cada GET (los precios de `Product` pueden cambiar) | Snapshot inmutable (`unitPrice` congelado) |
+| **Duración** | Persiste indefinidamente hasta que el user compra o abandona | Inmutable una vez entregado/cancelado |
+| **Stock** | No reserva nada | Reservará stock al pagar (futuro) |
+| **Relación con User** | 1 cart activo por user | N orders por user |
+
+Modelo propuesto:
+
+```java
+// model/cart/Cart.java
+@OneToOne(fetch = LAZY)
+@JoinColumn(name = "user_id", unique = true)
+private User user;                       // 1 cart activo por user (o N, con flag "active")
+
+@OneToMany(mappedBy = "cart", cascade = ALL, orphanRemoval = true)
+private List<CartItem> items;
+
+// model/cart/CartItem.java
+@ManyToOne(fetch = LAZY) @JoinColumn(name = "cart_id")
+private Cart cart;
+@Column(name = "product_id") private Long productId;  // FK lógica
+@Column private Integer quantity;
+// SIN unitPrice, SIN lineTotal → el precio se lee en vivo de Product
+```
+
+Endpoints propuestos:
+
+```
+GET    /api/carts              → mi cart activo
+POST   /api/carts/items        → { productId, quantity }    añade o merge
+PATCH  /api/carts/items/{id}   → { quantity }                (si 0 → borra)
+DELETE /api/carts/items/{id}   → borra item
+DELETE /api/carts              → vacía el cart
+POST   /api/carts/checkout     → body: { shippingAddress }   CONVIERTE el cart en Order
+```
+
+**Flujo de checkout (lo importante a decidir):**
+
+```
+1. Cliente hace POST /api/carts/checkout
+2. Backend crea Order con los items del cart (snapshot de Product.price en ese instante)
+3. Backend borra el cart (o lo marca como "converted" para auditoría)
+4. Backend devuelve el Order en estado PENDING → PATCH /pay como siempre
+```
+
+Este flujo **no** rompe Order: el `OrderCreateRequest.items[]` puede venir de dos fuentes (cart o payload manual del admin), pero el `OrderService.create(...)` recibe los `OrderItemRequest` igual. La diferencia es que `/api/carts/checkout` es un wrapper que:
+1. Lee el cart
+2. Convierte sus items a `OrderItemRequest`
+3. Pasa al `orderService.create(...)` existente
+4. Limpia el cart
+
+### 13.6 Cómo encajará el frontend (en una iteración futura)
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ React 19 (Vite 8, Tailwind v4)                            │
+│                                                            │
+│  main.jsx → BrowserRouter → App.jsx                       │
+│      │                                                     │
+│      ├── /                 Home (catálogo público)         │
+│      ├── /products/:id     Detalle producto                │
+│      ├── /cart             Cart (requiere login)           │
+│      ├── /checkout         Confirmar envío + pago          │
+│      ├── /orders           Mis pedidos                     │
+│      ├── /orders/:id       Detalle pedido                  │
+│      ├── /login            Login                           │
+│      └── /admin/*          Panel admin (solo ADMIN)        │
+│                                                            │
+│  src/api/                                                  │
+│    ├── client.js          fetch wrapper, baseURL, JWT      │
+│    ├── auth.js            login(), logout(), me()          │
+│    ├── products.js        list, get, create, update        │
+│    ├── cart.js            get, addItem, updateQty, checkout│
+│    └── orders.js          list, get, pay, cancel           │
+│                                                            │
+│  src/store/                                                │
+│    ├── authContext.jsx    user, token, login(), logout()   │
+│    └── cartContext.jsx    cart, addItem(), removeItem()    │
+└────────────────────────────────────────────────────────────┘
+```
+
+Punto de entrada HTTP (frontend → backend):
+- **Docker** (prod): mismas rutas relativas `/api/...` (Nginx hace de proxy, mismo origen).
+- **Dev local** (`npm run dev` en `:5173`): rutas absolutas `http://localhost:8080/api/...` con CORS abierto en `application-local.properties` para `http://localhost:5173`.
+
+### 13.7 Verificación rápida del estado actual
+
+```bash
+# Backend levanta y crea el schema con ddl-auto=update
+docker compose up -d backend
+docker compose logs -f backend | grep "Started BackendApplication"
+
+# Frontend sirviendo el bundle
+docker compose up -d frontend
+curl -I http://localhost
+
+# Swagger UI accesible sin auth
+open http://localhost:8080/swagger-ui.html
+
+# Login + request autenticada
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"customer@example.com","password":"TuPassword"}' | jq -r .token)
+
+curl -s http://localhost:8080/api/orders -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+Si los cuatro comandos anteriores funcionan, el grafo entero (DB → JPA → Service → Controller → JwtFilter → Nginx → browser) está vivo.

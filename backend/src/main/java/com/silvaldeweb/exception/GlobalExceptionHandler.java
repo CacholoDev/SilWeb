@@ -19,6 +19,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.silvaldeweb.exception.address.AddressNotFoundException;
 import com.silvaldeweb.exception.category.CategoryAlreadyExistsException;
 import com.silvaldeweb.exception.category.CategoryNotFoundException;
+import com.silvaldeweb.exception.order.OrderAlreadyExistsException;
+import com.silvaldeweb.exception.order.OrderInvalidStateException;
+import com.silvaldeweb.exception.order.OrderItemNotFoundException;
+import com.silvaldeweb.exception.order.OrderNotFoundException;
 import com.silvaldeweb.exception.product.ProductAlreadyExistsException;
 import com.silvaldeweb.exception.product.ProductNotFoundException;
 import com.silvaldeweb.exception.user.UserAlreadyExistsException;
@@ -136,6 +140,50 @@ public class GlobalExceptionHandler {
                                             HttpServletRequest request) {
         ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problemDetail.setTitle("User conflict");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(OrderNotFoundException.class)
+    public ProblemDetail handleOrderNotFound(OrderNotFoundException exception,
+                                             HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Order not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(OrderItemNotFoundException.class)
+    public ProblemDetail handleOrderItemNotFound(OrderItemNotFoundException exception,
+                                                 HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Order item not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(OrderAlreadyExistsException.class)
+    public ProblemDetail handleOrderConflict(OrderAlreadyExistsException exception,
+                                             HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problemDetail.setTitle("Order conflict");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(OrderInvalidStateException.class)
+    public ProblemDetail handleOrderInvalidState(OrderInvalidStateException exception,
+                                                 HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        problemDetail.setTitle("Order invalid state");
         problemDetail.setDetail(exception.getMessage());
         problemDetail.setProperty("path", request.getRequestURI());
         problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());

@@ -6,13 +6,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.user.UserRepository;
 
-@Service
 public class DbUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
@@ -22,7 +19,6 @@ public class DbUserDetailsService implements UserDetailsService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         User user = userRepository.findByEmailIgnoreCase(email.trim().toLowerCase())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
