@@ -266,6 +266,41 @@ Convención (ver AGENTS.md para detalle):
 
 > Reglas de negocio clave: `Order.total` se calcula en el service y no acepta override (precio histórico fiable). `OrderItem.unitPrice` es snapshot (no se actualiza aunque cambie `Product.price`). Las transiciones de estado están controladas: `PENDING → PAID → SHIPPED → DELIVERED`, con `CANCELLED` como estado terminal (no se puede cancelar un pedido ya enviado o entregado).
 
+### `carts` (1:1 con `users`)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `customer_id` | BIGINT | FK → `users.id` UNIQUE NOT NULL, LAZY (1 cart activo por user) |
+| `status` | VARCHAR(20) | NOT NULL, enum `CartStatus` (`ACTIVE`, `ABANDONED`, `CONVERTED`) |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
+
+### `cart_items` (N:1 con `carts`, cascade ALL + orphanRemoval)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `cart_id` | BIGINT | FK → `carts.id` NOT NULL, LAZY |
+| `product_id` | BIGINT | FK lógica → `products.id` (sin `@ManyToOne` para mantenerlo ligero) |
+| `quantity` | INT | NOT NULL, `>= 1` |
+| `created_at` | TIMESTAMP | NOT NULL |
+| `updated_at` | TIMESTAMP | NOT NULL |
+
+> Diferencia clave con `OrderItem`: `cart_items` **no** tiene `unitPrice` ni `lineTotal` persistidos. El precio se re-lee de `products` en cada `GET /api/carts` y al hacer checkout, para que el usuario siempre vea el precio real (no uno stale). En el checkout, `OrderItem.unitPrice` se congela como snapshot del precio actual de `Product` en ese instante.
+
+### `audit_logs` (append-only, solo ADMIN)
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | BIGINT | PK auto |
+| `actor_id` | BIGINT | FK → `users.id` NOT NULL, LAZY (debe ser ADMIN para loguear) |
+| `action` | VARCHAR(20) | NOT NULL, enum `Action` (`CREATE`, `UPDATE`, `DELETE`, `STATE_CHANGE`, `LOGIN`, `LOGOUT`) |
+| `entity_name` | VARCHAR(60) | NOT NULL, nombre de la entity afectada (`Order`, `Product`, etc.) |
+| `entity_id` | BIGINT | nullable (acciones sin target, ej. `LOGIN`) |
+| `metadata` | VARCHAR(2000) | nullable, contexto extra: "PAID -> SHIPPED carrier=SEUR tracking=..." o "shippingAddress: calle A -> calle B" |
+| `ip_address` | VARCHAR(64) | nullable, IP del cliente (futuro) |
+| `created_at` | TIMESTAMP | NOT NULL, **inmutable** (sin `updated_at`) |
+
+> **Reglas de negocio clave**: `audit_logs` es **append-only** — sin UPDATE, sin DELETE, sin endpoint para modificar. Solo `GET /api/audit-logs` (admin). La entity lleva índices en `actor_id`, `(entity_name, entity_id)` y `created_at` para queries rápidas de "qué hizo el admin X con el order Y" o "todos los cambios de estado del order Z". El log se traga errores (`@Transactional(propagation = REQUIRES_NEW)` + try/catch) para que un fallo en la BD de audit NUNCA tumbe una operación de negocio. El `AuditLogService.record(...)` filtra internamente: si el actor es null o no es ADMIN, no se persiste nada.
+
 ## 9. API REST
 
 Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/auth/login`. Respuestas de error son `ProblemDetail` JSON.
@@ -298,6 +333,41 @@ Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/aut
 
 > Reglas de autorización: el owner se obtiene SIEMPRE del JWT (`AuthUtils.currentUser` resuelve el `User` por email y compara `id` con `Order.customer.id`). Si un USER pide un pedido que no es suyo se lanza `AccessDeniedException` → 403. Los endpoints `/api/orders/**` aceptan tanto USER como ADMIN; `DELETE` es exclusivo de ADMIN vía matcher en `SecurityConfig`. Los recursos `OrderItem`/`Payment`/`Shipment` no tienen controllers propios, se acceden siempre dentro del payload de `Order`.
 
+### Carts (`/api/carts`)
+- `GET /api/carts` (USER/ADMIN) devuelve el cart activo del user autenticado, creándolo si no existe.
+- `POST /api/carts/items` (USER/ADMIN) añade o mergea — body `{productId, quantity}`. Si el producto ya está en el cart, suma `quantity` en lugar de duplicar.
+- `PATCH /api/carts/items/{itemId}` (USER/ADMIN) cambia la cantidad — body `{quantity}`. Borra el item si se hace desde otra ruta.
+- `DELETE /api/carts/items/{itemId}` (USER/ADMIN) borra el item del cart.
+- `DELETE /api/carts` (USER/ADMIN) vacía el cart (los items se eliminan, el cart persiste con `status=ACTIVE`).
+- `POST /api/carts/checkout` (USER/ADMIN) convierte el cart en un `Order` en estado `PENDING` — body `{shippingAddress}`. Valida stock de todos los items antes de crear el pedido. Devuelve el `OrderResponse` directamente. Tras éxito, vacía el cart y lo marca `status=CONVERTED`.
+
+> Reglas de autorización: el cart SIEMPRE se identifica por el usuario autenticado. No se expone `{cartId}` en URL — `GET /api/carts` resuelve internamente `findByCustomerId(jwt.userId)` o crea uno nuevo. Imposible acceder al cart de otro user. El campo `unitPrice` en los items del `CartResponse` se lee en vivo de `products` (puede cambiar entre requests). En checkout, si algún item no tiene stock suficiente (`product.stock < quantity`), se lanza `InsufficientStockException` → 409 con `productId`, `requested`, `available` en el body.
+
+### Audit Logs (`/api/audit-logs`, **solo ADMIN**)
+- `GET /api/audit-logs` — filtros opcionales: `?actorId=`, `?entity=Order`, `?entityId=10`, `?action=DELETE`, `?from=2026-01-01T00:00:00Z`, `?to=2026-12-31T23:59:59Z`. Paginación: `?page=0&size=20` (default 20, orden `createdAt DESC`).
+- **No hay POST/PUT/DELETE**: el log es append-only, no se puede modificar vía API.
+
+> Los logs los emite el `AuditLogService.record(actor, action, entityName, entityId, metadata, ipAddress)`, llamado desde los services críticos (`OrderService.create/pay/ship/deliver/cancel/delete/update`, y el `AuthService` en login/logout cuando se implemente). El método es fire-and-forget: nunca lanza excepciones, nunca hace fallar la operación de negocio, y se persiste en una transacción independiente (`REQUIRES_NEW`) para que un rollback del log no afecte al commit de la operación. Si el actor no es ADMIN, el record no persiste nada (skip silencioso, logueado a nivel `DEBUG`).
+
+**Ejemplo de query útil** (qué pasó con el order 50):
+
+```bash
+GET /api/audit-logs?entity=Order&entityId=50
+```
+
+Respuesta:
+```json
+{
+  "content": [
+    { "id": 1, "actorEmail": "customer@example.com", "action": "CREATE",  "metadata": "orderNumber=ORD-... total=124.48 items=2", "createdAt": "..." },
+    { "id": 2, "actorEmail": "customer@example.com", "action": "STATE_CHANGE", "metadata": "PENDING -> PAID via CARD", "createdAt": "..." },
+    { "id": 3, "actorEmail": "admin@example.com",     "action": "STATE_CHANGE", "metadata": "PAID -> SHIPPED carrier=SEUR tracking=TRACK-1", "createdAt": "..." }
+  ],
+  "pageable": {...},
+  "totalElements": 3
+}
+```
+
 ## 10. Dev local
 
 | Escenario | Comando | Notas |
@@ -323,8 +393,8 @@ Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/aut
 - **Admin**: gestión productos, categorías, stock, pedidos, clientes, dashboard.
 - **Clientes**: registro, login, perfil, direcciones, historial, carrito, pedidos.
 - **Métricas**: ventas totales/por mes/por categoría, productos más vendidos, clientes más activos, ticket medio, pedidos pendientes, evolución de ingresos.
-- **Hecho**: entidad `User` con `UserDetailsService` DB-backed (`DbUserDetailsService`), entidad `Address`, entidad `Order` + `OrderItem` + `Payment` + `Shipment`, Swagger UI 3.0.3 con JWT bearer.
-- **Pendiente**: integración real con un payment provider (Stripe/PayPal) para `Payment.providerReference`, entidad `Cart` + `CartItem`, stock real (`Product.stock -= OrderItem.quantity` al pagar, no al crear), webhooks de shipment.
+- **Hecho**: entidad `User` con `UserDetailsService` DB-backed (`DbUserDetailsService`), entidad `Address`, entidad `Order` + `OrderItem` + `Payment` + `Shipment`, entidad `Cart` + `CartItem` con checkout, `AuditLog` append-only con `Action` enum y filtros paginados, Swagger UI 3.0.3 con JWT bearer.
+- **Pendiente**: integración real con un payment provider (Stripe/PayPal) para `Payment.providerReference`, decremento de `Product.stock` al pagar (validado en checkout pero NO descontado), webhooks de shipment, persistencia de `Cart` para carritos abandonados (`status=ABANDONED` con job que lo asigne tras X días sin actividad), extender `AuditLog.record(...)` a `ProductService.delete`, `UserService.delete`, `CategoryService.delete` y `AuthService.login` (ahora mismo solo audita acciones de `Order` y los `STATE_CHANGE`).
 
 ## 13. Cómo se conecta la aplicación
 
@@ -414,90 +484,85 @@ Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/aut
                     │  users   │
                     └─────┬────┘
               ┌───────────┼────────────┬──────────────┐
-              │ (1:N)     │ (1:N)       │ (1:N)        │
+              │ (1:N)     │ (1:N)       │ (1:1)        │
               ▼           ▼             ▼              │
        ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-       │addresses │  │  orders  │  │ (futuro) │        │
-       └──────────┘  └────┬─────┘  │  carts   │        │
-                          │        └──────────┘        │
-                ┌─────────┼─────────┐                  │
-                │ (1:N)   │ (1:1)   │ (1:1)            │
-                ▼         ▼         ▼                  │
-         ┌──────────┐┌────────┐┌──────────┐            │
-         │order_    ││payments││shipments │            │
-         │items     │└────────┘└──────────┘            │
-         └────┬─────┘                                    │
-              │ (FK lógica, no @ManyToOne)              │
-              ▼                                          │
-       ┌──────────┐         ┌──────────┐                │
-       │ products │◄────────│categories│                │
-       └──────────┘  (N:1)  └──────────┘                │
-                                                       │
+       │addresses │  │  orders  │  │  carts   │        │
+       └──────────┘  └────┬─────┘  └────┬─────┘        │
+                          │             │ (1:N)        │
+                ┌─────────┼─────────┐   ▼              │
+                │ (1:N)   │ (1:1)   │ (1:1)  ┌──────────┐
+                ▼         ▼         ▼        │ cart_    │
+         ┌──────────┐┌────────┐┌──────────┐  │ items    │
+         │order_    ││payments││shipments │  └────┬─────┘
+         │items     │└────────┘└──────────┘       │
+         └────┬─────┘                             │
+              │ (FK lógica, no @ManyToOne)        │
+              │                                   │
+              ▼                                   ▼
+       ┌──────────┐         ┌──────────┐   (FK lógica)
+       │ products │◄────────│categories│
+       └──────────┘  (N:1)  └──────────┘
+
+                    ┌────────────┐
+                    │ audit_logs │ ── (N:1) actor_id ──► users
+                    │ (append-   │
+                    │  only)     │  entity_name + entity_id
+                    └────────────┘      apuntan a CUALQUIER entity
+
        Leyenda: ─── FK JPA ─── FK lógica
 ```
 
 Notas:
-- `Order.customer_id` y `Address.user_id` son **FKs JPA** (`@ManyToOne`, validadas por Hibernate y con `ON DELETE` no restrictivo en MySQL).
-- `OrderItem.product_id` es **FK lógica** (un `Long` sin `@ManyToOne`) para mantener `OrderItem` ligero. Si borras un `Product` referenciado, el `OrderItem` queda con un id huérfano — defensa en profundidad con `@JsonIgnore` en la respuesta para no romper la API.
+- `Order.customer_id`, `Address.user_id` y `Cart.customer_id` son **FKs JPA** (`@ManyToOne` / `@OneToOne` con `unique=true`, validadas por Hibernate y con `ON DELETE` no restrictivo en MySQL).
+- `OrderItem.product_id` y `CartItem.product_id` son **FKs lógicas** (un `Long` sin `@ManyToOne`) para mantener las entities ligeras. Si borras un `Product` referenciado, los items quedan con un id huérfano — defensa en profundidad con `@JsonIgnore` en la respuesta para no romper la API. En `CartItem` esto se mitiga con la validación de `active` y `stock` en `checkout`.
 - `payments.order_id` y `shipments.order_id` son FKs JPA 1:1 con `unique=true`, cascade ALL + orphanRemoval.
-- La relación inversa (User → List<Address>, User → List<Order>) está **explícitamente no mapeada** para mantener la BD limpia y evitar N+1. Si más adelante el admin necesita "todos los pedidos de un usuario", se hace con `findByCustomerId(Long)` en el repository (ya existe).
+- La relación inversa (User → List<Address>, User → List<Order>, User → Cart) está **explícitamente no mapeada** para mantener la BD limpia y evitar N+1. Si más adelante el admin necesita "todos los pedidos de un usuario", se hace con `findByCustomerId(Long)` en el repository (ya existe).
 
 ### 13.5 Cómo encajará Cart (próxima feature)
 
-Cart no es un "mini-pedido": tiene semántica distinta. Diferencias que justifican una entity propia:
+**Hecho.** Cart implementado como `Cart` (1:1 con `User`, `customer_id` UNIQUE) + `CartItem` (N:1 con `Cart`, cascade ALL + orphanRemoval). La diferencia clave con `OrderItem`: **no** persiste `unitPrice` ni `lineTotal`. Cada `GET /api/carts` re-lee los precios actuales de `Product` con un `findAllById` batch. Esto significa que el usuario ve el precio real SIEMPRE (incluso si cambió desde que añadió el item).
 
 | Aspecto | Cart | Order |
 |---|---|---|
-| **Estado** | Activo / Abandonado / Convertido (no hay `PENDING → PAID`, simplemente el cart se vacía al hacer checkout) | `PENDING → PAID → SHIPPED → DELIVERED` (o `CANCELLED`) |
-| **Total** | Recalculado en cada GET (los precios de `Product` pueden cambiar) | Snapshot inmutable (`unitPrice` congelado) |
-| **Duración** | Persiste indefinidamente hasta que el user compra o abandona | Inmutable una vez entregado/cancelado |
-| **Stock** | No reserva nada | Reservará stock al pagar (futuro) |
-| **Relación con User** | 1 cart activo por user | N orders por user |
+| **Estado** | `ACTIVE` / `ABANDONED` / `CONVERTED` (se vacía al hacer checkout) | `PENDING → PAID → SHIPPED → DELIVERED` (o `CANCELLED`) |
+| **Total** | Recalculado en cada GET desde `Product.price` actual | Snapshot inmutable (`unitPrice` congelado) |
+| **Duración** | Persiste hasta checkout o limpieza manual | Inmutable una vez entregado/cancelado |
+| **Stock** | Validado en `checkout` (no reservado) | Descontado en `pay()` (futuro) |
+| **Relación con User** | 1 cart activo por user (`UNIQUE` en `customer_id`) | N orders por user |
 
-Modelo propuesto:
-
-```java
-// model/cart/Cart.java
-@OneToOne(fetch = LAZY)
-@JoinColumn(name = "user_id", unique = true)
-private User user;                       // 1 cart activo por user (o N, con flag "active")
-
-@OneToMany(mappedBy = "cart", cascade = ALL, orphanRemoval = true)
-private List<CartItem> items;
-
-// model/cart/CartItem.java
-@ManyToOne(fetch = LAZY) @JoinColumn(name = "cart_id")
-private Cart cart;
-@Column(name = "product_id") private Long productId;  // FK lógica
-@Column private Integer quantity;
-// SIN unitPrice, SIN lineTotal → el precio se lee en vivo de Product
-```
-
-Endpoints propuestos:
+**Flujo de checkout** (lo que hace `CartService.checkout(...)`):
 
 ```
-GET    /api/carts              → mi cart activo
-POST   /api/carts/items        → { productId, quantity }    añade o merge
-PATCH  /api/carts/items/{id}   → { quantity }                (si 0 → borra)
-DELETE /api/carts/items/{id}   → borra item
-DELETE /api/carts              → vacía el cart
-POST   /api/carts/checkout     → body: { shippingAddress }   CONVIERTE el cart en Order
+1. Cliente hace POST /api/carts/checkout con { shippingAddress }
+2. Backend carga el cart activo del user (findByCustomerId o crea)
+3. Backend hace findAllById(productsIds) para batch-load de Product
+4. Backend valida que cada Product existe, está activo, y tiene stock >= quantity
+   - Si falla stock → InsufficientStockException → 409 con {productId, requested, available}
+5. Backend construye OrderItemRequest[] con Product.price actual
+6. Backend llama a orderService.create(userId, isAdmin, new OrderCreateRequest(items, shippingAddress))
+7. Backend vacía el cart y marca status=CONVERTED
+8. Backend devuelve el OrderResponse (PENDING) al cliente
+9. Cliente hace PATCH /api/orders/{id}/pay como cualquier otro pedido
 ```
 
-**Flujo de checkout (lo importante a decidir):**
+Este flujo **no** duplica lógica: `CartService.checkout` es un wrapper puro sobre `OrderService.create(...)`. Si mañana eliminamos Cart del frontend, el cliente puede seguir creando orders vía `POST /api/orders` directamente.
+
+**Endpoints finales** (todos USER/ADMIN, no DELETE masivos):
 
 ```
-1. Cliente hace POST /api/carts/checkout
-2. Backend crea Order con los items del cart (snapshot de Product.price en ese instante)
-3. Backend borra el cart (o lo marca como "converted" para auditoría)
-4. Backend devuelve el Order en estado PENDING → PATCH /pay como siempre
+GET    /api/carts                  → mi cart activo (crea si no existe)
+POST   /api/carts/items            → { productId, quantity }    añade o mergea
+PATCH  /api/carts/items/{itemId}   → { quantity }
+DELETE /api/carts/items/{itemId}   → borra item
+DELETE /api/carts                  → vacía el cart (no lo borra, status vuelve a ACTIVE)
+POST   /api/carts/checkout         → { shippingAddress }         crea Order PENDING
 ```
 
-Este flujo **no** rompe Order: el `OrderCreateRequest.items[]` puede venir de dos fuentes (cart o payload manual del admin), pero el `OrderService.create(...)` recibe los `OrderItemRequest` igual. La diferencia es que `/api/carts/checkout` es un wrapper que:
-1. Lee el cart
-2. Convierte sus items a `OrderItemRequest`
-3. Pasa al `orderService.create(...)` existente
-4. Limpia el cart
+**Lo que NO se hace todavía (TODO):**
+- Decrementar `Product.stock` en `pay()` (validamos en checkout pero no descontamos).
+- Cron job que marque carts como `ABANDONED` tras X días sin actividad.
+- Persistir el `unitPrice` que vio el usuario al añadir el item (para mostrar "antes X, ahora Y" en el frontend si hubo cambio de precio).
 
 ### 13.6 Cómo encajará el frontend (en una iteración futura)
 
@@ -520,7 +585,8 @@ Este flujo **no** rompe Order: el `OrderCreateRequest.items[]` puede venir de do
 │    ├── client.js          fetch wrapper, baseURL, JWT      │
 │    ├── auth.js            login(), logout(), me()          │
 │    ├── products.js        list, get, create, update        │
-│    ├── cart.js            get, addItem, updateQty, checkout│
+│    ├── cart.js            get, addItem, updateItem,        │
+│    │                      removeItem, clear, checkout      │
 │    └── orders.js          list, get, pay, cancel           │
 │                                                            │
 │  src/store/                                                │
@@ -532,6 +598,12 @@ Este flujo **no** rompe Order: el `OrderCreateRequest.items[]` puede venir de do
 Punto de entrada HTTP (frontend → backend):
 - **Docker** (prod): mismas rutas relativas `/api/...` (Nginx hace de proxy, mismo origen).
 - **Dev local** (`npm run dev` en `:5173`): rutas absolutas `http://localhost:8080/api/...` con CORS abierto en `application-local.properties` para `http://localhost:5173`.
+
+**El `cartContext.jsx`** se monta así:
+1. Al login, hace `GET /api/carts` y guarda el `CartResponse` en estado.
+2. `addItem` → `POST /api/carts/items` → actualiza el estado con la respuesta (que ya trae el item nuevo con `unitPrice` y `lineTotal` recalculados).
+3. `checkout(shippingAddress)` → `POST /api/carts/checkout` → recibe el `OrderResponse`, navega a `/orders/{id}`.
+4. Tras `pay`, el frontend ya no toca el cart: la próxima vez que se llame `GET /api/carts`, el server lo devolverá vacío (status=`CONVERTED` → `ACTIVE` tras `clear` o sigue `CONVERTED` mostrando el último pedido).
 
 ### 13.7 Verificación rápida del estado actual
 

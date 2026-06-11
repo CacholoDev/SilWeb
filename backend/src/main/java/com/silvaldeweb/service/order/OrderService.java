@@ -28,6 +28,7 @@ import com.silvaldeweb.exception.order.OrderInvalidStateException;
 import com.silvaldeweb.exception.order.OrderNotFoundException;
 import com.silvaldeweb.exception.product.ProductNotFoundException;
 import com.silvaldeweb.exception.user.UserNotFoundException;
+import com.silvaldeweb.model.audit.Action;
 import com.silvaldeweb.model.order.Order;
 import com.silvaldeweb.model.order.OrderItem;
 import com.silvaldeweb.model.order.OrderStatus;
@@ -40,6 +41,7 @@ import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.order.OrderRepository;
 import com.silvaldeweb.repository.product.ProductRepository;
 import com.silvaldeweb.repository.user.UserRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -55,9 +57,10 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final AuditLogService auditLogService;
 
     @Transactional
-    public OrderResponse create(Long authenticatedUserId, boolean isAdmin, OrderCreateRequest request) {
+    public OrderResponse create(Long authenticatedUserId, boolean isAdmin, OrderCreateRequest request, User actor) {
         User customer = resolveCustomer(authenticatedUserId, isAdmin, request);
         log.info("Creating order customerId={} itemCount={}", customer.getId(), request.items().size());
 
@@ -93,6 +96,9 @@ public class OrderService {
         order.setTotal(total);
 
         Order saved = orderRepository.save(order);
+        auditLogService.record(actor, Action.CREATE, "Order", saved.getId(),
+                "orderNumber=" + saved.getOrderNumber() + " total=" + saved.getTotal()
+                        + " items=" + saved.getItems().size(), null);
         log.info("Order created id={} orderNumber='{}' total={}",
                 saved.getId(), saved.getOrderNumber(), saved.getTotal());
         return toResponse(saved);
@@ -120,7 +126,7 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderResponse update(Long id, Long authenticatedUserId, boolean isAdmin, OrderUpdateRequest request) {
+    public OrderResponse update(Long id, Long authenticatedUserId, boolean isAdmin, OrderUpdateRequest request, User actor) {
         log.info("Updating order id={} userId={} isAdmin={}", id, authenticatedUserId, isAdmin);
         Order order = findById(id);
         enforceOwnership(order, authenticatedUserId, isAdmin);
@@ -130,7 +136,10 @@ public class OrderService {
                     "Only PENDING orders can be updated. Current status: " + order.getStatus());
         }
         if (request.shippingAddress() != null && !request.shippingAddress().isBlank()) {
+            String previous = order.getShippingAddress();
             order.setShippingAddress(request.shippingAddress());
+            auditLogService.record(actor, Action.UPDATE, "Order", order.getId(),
+                    "shippingAddress: " + previous + " -> " + request.shippingAddress(), null);
         }
 
         Order saved = orderRepository.save(order);
@@ -139,7 +148,7 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderResponse pay(Long id, Long authenticatedUserId, boolean isAdmin, OrderPayRequest request) {
+    public OrderResponse pay(Long id, Long authenticatedUserId, boolean isAdmin, OrderPayRequest request, User actor) {
         log.info("Paying order id={} userId={} method={}", id, authenticatedUserId, request.method());
         Order order = findById(id);
         enforceOwnership(order, authenticatedUserId, isAdmin);
@@ -158,15 +167,18 @@ public class OrderService {
                 .paidAt(OffsetDateTime.now(ZoneOffset.UTC).toInstant())
                 .build();
         order.setPayment(payment);
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.PAID);
 
         Order saved = orderRepository.save(order);
+        auditLogService.record(actor, Action.STATE_CHANGE, "Order", saved.getId(),
+                previousStatus + " -> PAID via " + request.method(), null);
         log.info("Order paid id={} amount={}", saved.getId(), saved.getTotal());
         return toResponse(saved);
     }
 
     @Transactional
-    public OrderResponse ship(Long id, Long authenticatedUserId, boolean isAdmin, OrderShipRequest request) {
+    public OrderResponse ship(Long id, Long authenticatedUserId, boolean isAdmin, OrderShipRequest request, User actor) {
         log.info("Shipping order id={} userId={} carrier='{}'", id, authenticatedUserId, request.carrier());
         Order order = findById(id);
         enforceOwnership(order, authenticatedUserId, isAdmin);
@@ -184,16 +196,19 @@ public class OrderService {
                 .shippedAt(OffsetDateTime.now(ZoneOffset.UTC).toInstant())
                 .build();
         order.setShipment(shipment);
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.SHIPPED);
 
         Order saved = orderRepository.save(order);
+        auditLogService.record(actor, Action.STATE_CHANGE, "Order", saved.getId(),
+                previousStatus + " -> SHIPPED carrier=" + request.carrier() + " tracking=" + request.trackingNumber(), null);
         log.info("Order shipped id={} trackingNumber='{}'", saved.getId(),
                 saved.getShipment() != null ? saved.getShipment().getTrackingNumber() : null);
         return toResponse(saved);
     }
 
     @Transactional
-    public OrderResponse markDelivered(Long id, Long authenticatedUserId, boolean isAdmin) {
+    public OrderResponse markDelivered(Long id, Long authenticatedUserId, boolean isAdmin, User actor) {
         log.info("Marking order delivered id={} userId={} isAdmin={}", id, authenticatedUserId, isAdmin);
         Order order = findById(id);
         enforceOwnership(order, authenticatedUserId, isAdmin);
@@ -208,15 +223,18 @@ public class OrderService {
 
         order.getShipment().setStatus(ShipmentStatus.DELIVERED);
         order.getShipment().setDeliveredAt(OffsetDateTime.now(ZoneOffset.UTC).toInstant());
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.DELIVERED);
 
         Order saved = orderRepository.save(order);
+        auditLogService.record(actor, Action.STATE_CHANGE, "Order", saved.getId(),
+                previousStatus + " -> DELIVERED", null);
         log.info("Order delivered id={}", saved.getId());
         return toResponse(saved);
     }
 
     @Transactional
-    public OrderResponse cancel(Long id, Long authenticatedUserId, boolean isAdmin) {
+    public OrderResponse cancel(Long id, Long authenticatedUserId, boolean isAdmin, User actor) {
         log.info("Cancelling order id={} userId={} isAdmin={}", id, authenticatedUserId, isAdmin);
         Order order = findById(id);
         enforceOwnership(order, authenticatedUserId, isAdmin);
@@ -229,18 +247,25 @@ public class OrderService {
             throw new OrderInvalidStateException("Order is already cancelled.");
         }
 
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.CANCELLED);
         Order saved = orderRepository.save(order);
+        auditLogService.record(actor, Action.STATE_CHANGE, "Order", saved.getId(),
+                previousStatus + " -> CANCELLED", null);
         log.info("Order cancelled id={}", saved.getId());
         return toResponse(saved);
     }
 
     @Transactional
-    public void delete(Long id) {
-        log.info("Deleting order id={}", id);
+    public void delete(Long id, User actor) {
+        log.info("Deleting order id={} actor={}", id, actor != null ? actor.getEmail() : "null");
         try {
             Order order = findById(id);
+            String metadata = "orderNumber=" + order.getOrderNumber()
+                    + " customerId=" + (order.getCustomer() != null ? order.getCustomer().getId() : null)
+                    + " total=" + order.getTotal();
             orderRepository.delete(order);
+            auditLogService.record(actor, Action.DELETE, "Order", id, metadata, null);
             log.info("Order id={} deleted", id);
         } catch (OrderNotFoundException exception) {
             log.warn("Delete failed: order id={} not found", id);
@@ -251,7 +276,8 @@ public class OrderService {
         }
     }
 
-    private Order findById(Long id) {
+    @Transactional(readOnly = true)
+    public Order findById(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new OrderNotFoundException(id));
     }

@@ -118,7 +118,7 @@ class OrderControllerTest {
     void createReturnsCreatedOrder() throws Exception {
         when(userRepository.findByEmailIgnoreCase("customer@example.com"))
                 .thenReturn(java.util.Optional.of(normalUser));
-        when(orderService.create(eq(2L), eq(false), any(OrderCreateRequest.class)))
+        when(orderService.create(eq(2L), eq(false), any(OrderCreateRequest.class), any()))
                 .thenReturn(sampleResponse(50L));
 
         OrderCreateRequest request = new OrderCreateRequest(
@@ -177,7 +177,7 @@ class OrderControllerTest {
     void updateReturnsUpdatedOrder() throws Exception {
         when(userRepository.findByEmailIgnoreCase("customer@example.com"))
                 .thenReturn(java.util.Optional.of(normalUser));
-        when(orderService.update(eq(50L), eq(2L), eq(false), any(OrderUpdateRequest.class)))
+        when(orderService.update(eq(50L), eq(2L), eq(false), any(OrderUpdateRequest.class), any()))
                 .thenReturn(sampleResponse(50L));
 
         OrderUpdateRequest request = new OrderUpdateRequest("Nueva calle 5");
@@ -194,7 +194,7 @@ class OrderControllerTest {
     void payReturnsPaidOrder() throws Exception {
         when(userRepository.findByEmailIgnoreCase("customer@example.com"))
                 .thenReturn(java.util.Optional.of(normalUser));
-        when(orderService.pay(eq(50L), eq(2L), eq(false), any(OrderPayRequest.class)))
+        when(orderService.pay(eq(50L), eq(2L), eq(false), any(OrderPayRequest.class), any()))
                 .thenReturn(paidResponse(50L));
 
         OrderPayRequest request = new OrderPayRequest(PaymentMethod.CARD, "stripe-123");
@@ -223,9 +223,11 @@ class OrderControllerTest {
 
     @Test
     void deleteReturnsNoContent() throws Exception {
-        doNothing().when(orderService).delete(50L);
+        when(userRepository.findByEmailIgnoreCase("customer@example.com"))
+                .thenReturn(java.util.Optional.of(normalUser));
+        doNothing().when(orderService).delete(eq(50L), any());
 
-        mockMvc.perform(delete("/api/orders/50"))
+        mockMvc.perform(delete("/api/orders/50").principal(userAuth))
                 .andExpect(status().isNoContent());
     }
 
@@ -239,7 +241,7 @@ class OrderControllerTest {
         );
         when(userRepository.findByEmailIgnoreCase("customer@example.com"))
                 .thenReturn(java.util.Optional.of(normalUser));
-        when(orderService.cancel(eq(50L), eq(2L), eq(false))).thenReturn(cancelled);
+        when(orderService.cancel(eq(50L), eq(2L), eq(false), any())).thenReturn(cancelled);
 
         mockMvc.perform(patch("/api/orders/50/cancel").principal(userAuth))
                 .andExpect(status().isOk())
@@ -259,7 +261,7 @@ class OrderControllerTest {
         );
         when(userRepository.findByEmailIgnoreCase("customer@example.com"))
                 .thenReturn(java.util.Optional.of(normalUser));
-        when(orderService.markDelivered(eq(50L), eq(2L), eq(false))).thenReturn(delivered);
+        when(orderService.markDelivered(eq(50L), eq(2L), eq(false), any())).thenReturn(delivered);
 
         mockMvc.perform(patch("/api/orders/50/deliver").principal(userAuth))
                 .andExpect(status().isOk())

@@ -17,6 +17,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.silvaldeweb.exception.address.AddressNotFoundException;
+import com.silvaldeweb.exception.audit.AuditLogNotFoundException;
+import com.silvaldeweb.exception.cart.CartItemNotFoundException;
+import com.silvaldeweb.exception.cart.CartNotFoundException;
+import com.silvaldeweb.exception.cart.InsufficientStockException;
 import com.silvaldeweb.exception.category.CategoryAlreadyExistsException;
 import com.silvaldeweb.exception.category.CategoryNotFoundException;
 import com.silvaldeweb.exception.order.OrderAlreadyExistsException;
@@ -184,6 +188,53 @@ public class GlobalExceptionHandler {
                                                  HttpServletRequest request) {
         ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
         problemDetail.setTitle("Order invalid state");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(CartNotFoundException.class)
+    public ProblemDetail handleCartNotFound(CartNotFoundException exception,
+                                            HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Cart not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(CartItemNotFoundException.class)
+    public ProblemDetail handleCartItemNotFound(CartItemNotFoundException exception,
+                                                HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Cart item not found");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(InsufficientStockException.class)
+    public ProblemDetail handleInsufficientStock(InsufficientStockException exception,
+                                                 HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problemDetail.setTitle("Insufficient stock");
+        problemDetail.setDetail(exception.getMessage());
+        problemDetail.setProperty("path", request.getRequestURI());
+        problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());
+        problemDetail.setProperty("productId", exception.getProductId());
+        problemDetail.setProperty("requested", exception.getRequested());
+        problemDetail.setProperty("available", exception.getAvailable());
+        return problemDetail;
+    }
+
+    @ExceptionHandler(AuditLogNotFoundException.class)
+    public ProblemDetail handleAuditLogNotFound(AuditLogNotFoundException exception,
+                                                 HttpServletRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problemDetail.setTitle("Audit log not found");
         problemDetail.setDetail(exception.getMessage());
         problemDetail.setProperty("path", request.getRequestURI());
         problemDetail.setProperty("timestamp", OffsetDateTime.now().toString());

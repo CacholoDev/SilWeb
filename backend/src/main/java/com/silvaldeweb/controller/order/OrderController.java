@@ -45,81 +45,82 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<OrderResponse> create(@Valid @RequestBody OrderCreateRequest request,
                                                 Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
         log.info("POST /api/orders userId={} isAdmin={} itemCount={}",
-                user.getId(), isAdmin, request.items().size());
-        OrderResponse response = orderService.create(user.getId(), isAdmin, request);
+                actor.getId(), isAdmin, request.items().size());
+        OrderResponse response = orderService.create(actor.getId(), isAdmin, request, actor);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
     public List<OrderResponse> list(@RequestParam(required = false) OrderStatus status,
                                     Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("GET /api/orders userId={} isAdmin={} status={}", user.getId(), isAdmin, status);
-        return orderService.list(user.getId(), isAdmin, status);
+        log.info("GET /api/orders userId={} isAdmin={} status={}", actor.getId(), isAdmin, status);
+        return orderService.list(actor.getId(), isAdmin, status);
     }
 
     @GetMapping("/{id}")
     public OrderResponse get(@PathVariable Long id, Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("GET /api/orders/{} userId={} isAdmin={}", id, user.getId(), isAdmin);
-        return orderService.get(id, user.getId(), isAdmin);
+        log.info("GET /api/orders/{} userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        return orderService.get(id, actor.getId(), isAdmin);
     }
 
     @PutMapping("/{id}")
     public OrderResponse update(@PathVariable Long id,
                                 @Valid @RequestBody OrderUpdateRequest request,
                                 Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("PUT /api/orders/{} userId={} isAdmin={}", id, user.getId(), isAdmin);
-        return orderService.update(id, user.getId(), isAdmin, request);
+        log.info("PUT /api/orders/{} userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        return orderService.update(id, actor.getId(), isAdmin, request, actor);
     }
 
     @PatchMapping("/{id}/pay")
     public OrderResponse pay(@PathVariable Long id,
                              @Valid @RequestBody OrderPayRequest request,
                              Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("PATCH /api/orders/{}/pay userId={} isAdmin={}", id, user.getId(), isAdmin);
-        return orderService.pay(id, user.getId(), isAdmin, request);
+        log.info("PATCH /api/orders/{}/pay userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        return orderService.pay(id, actor.getId(), isAdmin, request, actor);
     }
 
     @PatchMapping("/{id}/ship")
     public OrderResponse ship(@PathVariable Long id,
                               @Valid @RequestBody OrderShipRequest request,
                               Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("PATCH /api/orders/{}/ship userId={} isAdmin={}", id, user.getId(), isAdmin);
-        return orderService.ship(id, user.getId(), isAdmin, request);
+        log.info("PATCH /api/orders/{}/ship userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        return orderService.ship(id, actor.getId(), isAdmin, request, actor);
     }
 
     @PatchMapping("/{id}/deliver")
     public OrderResponse deliver(@PathVariable Long id, Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("PATCH /api/orders/{}/deliver userId={} isAdmin={}", id, user.getId(), isAdmin);
-        return orderService.markDelivered(id, user.getId(), isAdmin);
+        log.info("PATCH /api/orders/{}/deliver userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        return orderService.markDelivered(id, actor.getId(), isAdmin, actor);
     }
 
     @PatchMapping("/{id}/cancel")
     public OrderResponse cancel(@PathVariable Long id, Authentication authentication) {
-        User user = AuthUtils.currentUser(authentication, userRepository);
+        User actor = AuthUtils.currentUser(authentication, userRepository);
         boolean isAdmin = AuthUtils.isAdmin(authentication);
-        log.info("PATCH /api/orders/{}/cancel userId={} isAdmin={}", id, user.getId(), isAdmin);
-        return orderService.cancel(id, user.getId(), isAdmin);
+        log.info("PATCH /api/orders/{}/cancel userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        return orderService.cancel(id, actor.getId(), isAdmin, actor);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        log.info("DELETE /api/orders/{}", id);
-        orderService.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("DELETE /api/orders/{} actorId={}", id, actor.getId());
+        orderService.delete(id, actor);
         return ResponseEntity.noContent().build();
     }
 }
