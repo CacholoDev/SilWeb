@@ -25,6 +25,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import com.silvaldeweb.config.JwtService;
 import com.silvaldeweb.dto.AuthResponse;
 import com.silvaldeweb.dto.LoginRequest;
+import com.silvaldeweb.model.user.Role;
+import com.silvaldeweb.repository.user.UserRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -34,6 +37,12 @@ class AuthServiceTest {
 
     @Mock
     private JwtService jwtService;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private AuditLogService auditLogService;
 
     @Mock
     private Authentication authentication;
@@ -52,6 +61,10 @@ class AuthServiceTest {
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
         when(authentication.getPrincipal()).thenReturn(userDetails);
         when(jwtService.generateToken(userDetails)).thenReturn("jwt-token");
+        when(userRepository.findByEmailIgnoreCase("admin@example.com"))
+                .thenReturn(java.util.Optional.of(
+                        com.silvaldeweb.model.user.User.builder()
+                                .id(1L).email("admin@example.com").role(Role.ADMIN).active(true).build()));
 
         AuthResponse response = authService.login(request);
 

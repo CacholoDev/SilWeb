@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,10 +17,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.silvaldeweb.config.AuthUtils;
 import com.silvaldeweb.dto.user.UserCreateRequest;
 import com.silvaldeweb.dto.user.UserResponse;
 import com.silvaldeweb.dto.user.UserUpdateRequest;
 import com.silvaldeweb.model.user.Role;
+import com.silvaldeweb.model.user.User;
+import com.silvaldeweb.repository.user.UserRepository;
 import com.silvaldeweb.service.user.UserService;
 
 import jakarta.validation.Valid;
@@ -33,11 +37,14 @@ public class UserController {
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userService;
+    private final UserRepository userRepository;
 
     @PostMapping
-    public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request) {
-        log.info("POST /api/users email='{}'", request.email());
-        UserResponse response = userService.create(request);
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody UserCreateRequest request,
+                                                Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("POST /api/users email='{}' actor={}", request.email(), actor.getEmail());
+        UserResponse response = userService.create(request, actor);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -55,15 +62,18 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public UserResponse update(@PathVariable Long id, @Valid @RequestBody UserUpdateRequest request) {
-        log.info("PUT /api/users/{}", id);
-        return userService.update(id, request);
+    public UserResponse update(@PathVariable Long id, @Valid @RequestBody UserUpdateRequest request,
+                                Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("PUT /api/users/{} actor={}", id, actor.getEmail());
+        return userService.update(id, request, actor);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        log.info("DELETE /api/users/{}", id);
-        userService.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("DELETE /api/users/{} actor={}", id, actor.getEmail());
+        userService.delete(id, actor);
         return ResponseEntity.noContent().build();
     }
 }

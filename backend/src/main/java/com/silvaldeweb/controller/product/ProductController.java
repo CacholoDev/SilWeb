@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,9 +17,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.silvaldeweb.config.AuthUtils;
 import com.silvaldeweb.dto.product.ProductCreateRequest;
 import com.silvaldeweb.dto.product.ProductResponse;
 import com.silvaldeweb.dto.product.ProductUpdateRequest;
+import com.silvaldeweb.model.user.User;
+import com.silvaldeweb.repository.user.UserRepository;
 import com.silvaldeweb.service.product.ProductService;
 
 import jakarta.validation.Valid;
@@ -32,11 +36,14 @@ public class ProductController {
     private static final Logger log = LoggerFactory.getLogger(ProductController.class);
 
     private final ProductService productService;
+    private final UserRepository userRepository;
 
     @PostMapping
-    public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductCreateRequest request) {
-        log.info("POST /api/products sku='{}'", request.sku());
-        ProductResponse response = productService.create(request);
+    public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductCreateRequest request,
+                                                  Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("POST /api/products sku='{}' actor={}", request.sku(), actor.getEmail());
+        ProductResponse response = productService.create(request, actor);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -54,15 +61,19 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductUpdateRequest request) {
-        log.info("PUT /api/products/{}", id);
-        return productService.update(id, request);
+    public ProductResponse update(@PathVariable Long id,
+                                  @Valid @RequestBody ProductUpdateRequest request,
+                                  Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("PUT /api/products/{} actor={}", id, actor.getEmail());
+        return productService.update(id, request, actor);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        log.info("DELETE /api/products/{}", id);
-        productService.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        User actor = AuthUtils.currentUser(authentication, userRepository);
+        log.info("DELETE /api/products/{} actor={}", id, actor.getEmail());
+        productService.delete(id, actor);
         return ResponseEntity.noContent().build();
     }
 }

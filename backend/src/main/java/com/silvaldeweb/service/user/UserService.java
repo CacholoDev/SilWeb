@@ -13,9 +13,11 @@ import com.silvaldeweb.dto.user.UserResponse;
 import com.silvaldeweb.dto.user.UserUpdateRequest;
 import com.silvaldeweb.exception.user.UserAlreadyExistsException;
 import com.silvaldeweb.exception.user.UserNotFoundException;
+import com.silvaldeweb.model.audit.Action;
 import com.silvaldeweb.model.user.Role;
 import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.user.UserRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,10 +29,12 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     @Transactional
-    public UserResponse create(UserCreateRequest request) {
-        log.info("Creating user email='{}' role={}", request.email(), request.role());
+    public UserResponse create(UserCreateRequest request, User actor) {
+        log.info("Creating user email='{}' role={} actor={}", request.email(), request.role(),
+                actor != null ? actor.getEmail() : "null");
         String email = request.email().trim().toLowerCase();
 
         if (userRepository.existsByEmailIgnoreCase(email)) {
@@ -50,6 +54,8 @@ public class UserService {
         }
 
         User saved = userRepository.save(builder.build());
+        auditLogService.record(actor, Action.CREATE, "User", saved.getId(),
+                "email=" + saved.getEmail() + " role=" + saved.getRole(), null);
         log.info("User created id={} email='{}'", saved.getId(), saved.getEmail());
         return toResponse(saved);
     }
@@ -79,8 +85,9 @@ public class UserService {
     }
 
     @Transactional
-    public UserResponse update(Long id, UserUpdateRequest request) {
-        log.info("Updating user id={} newEmail='{}'", id, request.email());
+    public UserResponse update(Long id, UserUpdateRequest request, User actor) {
+        log.info("Updating user id={} newEmail='{}' actor={}", id, request.email(),
+                actor != null ? actor.getEmail() : "null");
         User user = findById(id);
         String email = request.email().trim().toLowerCase();
 
@@ -89,11 +96,16 @@ public class UserService {
             throw new UserAlreadyExistsException(email);
         }
 
+        String previousEmail = user.getEmail();
+        Role previousRole = user.getRole();
+        Boolean previousActive = user.getActive();
+        boolean passwordChanged = request.password() != null && !request.password().isBlank();
+
         user.setEmail(email);
         user.setName(request.name());
         user.setPhone(request.phone());
 
-        if (request.password() != null && !request.password().isBlank()) {
+        if (passwordChanged) {
             log.info("Updating password for user id={}", id);
             user.setPassword(passwordEncoder.encode(request.password()));
         }
@@ -107,17 +119,35 @@ public class UserService {
         }
 
         User saved = userRepository.save(user);
+        StringBuilder diff = new StringBuilder();
+        if (!previousEmail.equals(saved.getEmail())) {
+            diff.append("email: ").append(previousEmail).append(" -> ").append(saved.getEmail()).append("; ");
+        }
+        if (previousRole != saved.getRole()) {
+            diff.append("role: ").append(previousRole).append(" -> ").append(saved.getRole()).append("; ");
+        }
+        if (previousActive != null && !previousActive.equals(saved.getActive())) {
+            diff.append("active: ").append(previousActive).append(" -> ").append(saved.getActive()).append("; ");
+        }
+        if (passwordChanged) {
+            diff.append("password changed; ");
+        }
+        if (diff.length() > 0) {
+            auditLogService.record(actor, Action.UPDATE, "User", saved.getId(), diff.toString().trim(), null);
+        }
         log.info("User updated id={}", saved.getId());
         return toResponse(saved);
     }
 
     @Transactional
-    public void delete(Long id) {
-        log.info("Deleting user id={}", id);
+    public void delete(Long id, User actor) {
+        log.info("Deleting user id={} actor={}", id, actor != null ? actor.getEmail() : "null");
         try {
             User user = findById(id);
+            String metadata = "email=" + user.getEmail() + " role=" + user.getRole();
             log.info("User id={} found, executing delete", id);
             userRepository.delete(user);
+            auditLogService.record(actor, Action.DELETE, "User", id, metadata, null);
             log.info("User id={} deleted", id);
         } catch (UserNotFoundException exception) {
             log.warn("Delete failed: user id={} not found", id);

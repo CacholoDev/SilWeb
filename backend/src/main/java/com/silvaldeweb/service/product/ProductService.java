@@ -13,10 +13,13 @@ import com.silvaldeweb.dto.product.ProductUpdateRequest;
 import com.silvaldeweb.exception.category.CategoryNotFoundException;
 import com.silvaldeweb.exception.product.ProductAlreadyExistsException;
 import com.silvaldeweb.exception.product.ProductNotFoundException;
+import com.silvaldeweb.model.audit.Action;
 import com.silvaldeweb.model.category.Category;
 import com.silvaldeweb.model.product.Product;
+import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.category.CategoryRepository;
 import com.silvaldeweb.repository.product.ProductRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,10 +31,12 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final AuditLogService auditLogService;
 
     @Transactional
-    public ProductResponse create(ProductCreateRequest request) {
-        log.info("Creating product sku='{}' name='{}'", request.sku(), request.name());
+    public ProductResponse create(ProductCreateRequest request, User actor) {
+        log.info("Creating product sku='{}' name='{}' actor={}", request.sku(), request.name(),
+                actor != null ? actor.getEmail() : "null");
         String name = request.name().trim();
         String sku = request.sku().trim();
 
@@ -56,6 +61,8 @@ public class ProductService {
         }
 
         Product saved = productRepository.save(builder.build());
+        auditLogService.record(actor, Action.CREATE, "Product", saved.getId(),
+                "sku=" + saved.getSku() + " name=" + saved.getName() + " price=" + saved.getPrice(), null);
         log.info("Product created id={} sku='{}'", saved.getId(), saved.getSku());
         return toResponse(saved);
     }
@@ -85,8 +92,9 @@ public class ProductService {
     }
 
     @Transactional
-    public ProductResponse update(Long id, ProductUpdateRequest request) {
-        log.info("Updating product id={} newSku='{}'", id, request.sku());
+    public ProductResponse update(Long id, ProductUpdateRequest request, User actor) {
+        log.info("Updating product id={} newSku='{}' actor={}", id, request.sku(),
+                actor != null ? actor.getEmail() : "null");
         Product product = findById(id);
         String name = request.name().trim();
         String sku = request.sku().trim();
@@ -102,6 +110,10 @@ public class ProductService {
             product.setCategory(category);
         }
 
+        java.math.BigDecimal previousPrice = product.getPrice();
+        Integer previousStock = product.getStock();
+        Boolean previousActive = product.getActive();
+
         product.setName(name);
         product.setSku(sku);
         product.setDescription(request.description());
@@ -112,17 +124,32 @@ public class ProductService {
         }
 
         Product saved = productRepository.save(product);
+        StringBuilder diff = new StringBuilder();
+        if (previousPrice != null && previousPrice.compareTo(saved.getPrice()) != 0) {
+            diff.append("price: ").append(previousPrice).append(" -> ").append(saved.getPrice()).append("; ");
+        }
+        if (!previousStock.equals(saved.getStock())) {
+            diff.append("stock: ").append(previousStock).append(" -> ").append(saved.getStock()).append("; ");
+        }
+        if (previousActive != null && !previousActive.equals(saved.getActive())) {
+            diff.append("active: ").append(previousActive).append(" -> ").append(saved.getActive()).append("; ");
+        }
+        if (diff.length() > 0) {
+            auditLogService.record(actor, Action.UPDATE, "Product", saved.getId(), diff.toString().trim(), null);
+        }
         log.info("Product updated id={}", saved.getId());
         return toResponse(saved);
     }
 
     @Transactional
-    public void delete(Long id) {
-        log.info("Deleting product id={}", id);
+    public void delete(Long id, User actor) {
+        log.info("Deleting product id={} actor={}", id, actor != null ? actor.getEmail() : "null");
         try {
             Product product = findById(id);
+            String metadata = "sku=" + product.getSku() + " name=" + product.getName() + " stock=" + product.getStock();
             log.info("Product id={} found, executing delete", id);
             productRepository.delete(product);
+            auditLogService.record(actor, Action.DELETE, "Product", id, metadata, null);
             log.info("Product id={} deleted", id);
         } catch (ProductNotFoundException exception) {
             log.warn("Delete failed: product id={} not found", id);

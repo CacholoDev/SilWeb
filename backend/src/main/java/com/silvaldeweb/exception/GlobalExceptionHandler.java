@@ -186,7 +186,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(OrderInvalidStateException.class)
     public ProblemDetail handleOrderInvalidState(OrderInvalidStateException exception,
                                                  HttpServletRequest request) {
-        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_CONTENT);
         problemDetail.setTitle("Order invalid state");
         problemDetail.setDetail(exception.getMessage());
         problemDetail.setProperty("path", request.getRequestURI());

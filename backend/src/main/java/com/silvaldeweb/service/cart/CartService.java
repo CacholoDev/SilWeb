@@ -18,7 +18,6 @@ import com.silvaldeweb.dto.cart.UpdateCartItemRequest;
 import com.silvaldeweb.dto.order.OrderCreateRequest;
 import com.silvaldeweb.dto.order.OrderItemRequest;
 import com.silvaldeweb.dto.order.OrderResponse;
-import com.silvaldeweb.exception.cart.CartNotFoundException;
 import com.silvaldeweb.exception.cart.InsufficientStockException;
 import com.silvaldeweb.exception.product.ProductNotFoundException;
 import com.silvaldeweb.model.cart.Cart;
@@ -26,7 +25,6 @@ import com.silvaldeweb.model.cart.CartItem;
 import com.silvaldeweb.model.cart.CartStatus;
 import com.silvaldeweb.model.product.Product;
 import com.silvaldeweb.model.user.User;
-import com.silvaldeweb.repository.cart.CartItemRepository;
 import com.silvaldeweb.repository.cart.CartRepository;
 import com.silvaldeweb.repository.product.ProductRepository;
 import com.silvaldeweb.repository.user.UserRepository;
@@ -41,7 +39,6 @@ public class CartService {
     private static final Logger log = LoggerFactory.getLogger(CartService.class);
 
     private final CartRepository cartRepository;
-    private final CartItemRepository cartItemRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
     private final OrderService orderService;

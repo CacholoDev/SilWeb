@@ -20,7 +20,10 @@ import com.silvaldeweb.dto.category.CategoryResponse;
 import com.silvaldeweb.dto.category.CategoryUpdateRequest;
 import com.silvaldeweb.exception.category.CategoryAlreadyExistsException;
 import com.silvaldeweb.model.category.Category;
+import com.silvaldeweb.model.user.Role;
+import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.category.CategoryRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 @ExtendWith(MockitoExtension.class)
 class CategoryServiceTest {
@@ -28,8 +31,15 @@ class CategoryServiceTest {
     @Mock
     private CategoryRepository categoryRepository;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private CategoryService categoryService;
+
+    private User adminActor() {
+        return User.builder().id(1L).email("admin@example.com").role(Role.ADMIN).build();
+    }
 
     @Test
     void createUsesDefaultActiveWhenNull() {
@@ -42,7 +52,7 @@ class CategoryServiceTest {
             return saved;
         });
 
-        CategoryResponse response = categoryService.create(request);
+        CategoryResponse response = categoryService.create(request, adminActor());
 
         ArgumentCaptor<Category> captor = ArgumentCaptor.forClass(Category.class);
         verify(categoryRepository).save(captor.capture());
@@ -58,7 +68,7 @@ class CategoryServiceTest {
         CategoryCreateRequest request = new CategoryCreateRequest("Home", "Desc", true);
         when(categoryRepository.existsByNameIgnoreCase("Home")).thenReturn(true);
 
-        assertThrows(CategoryAlreadyExistsException.class, () -> categoryService.create(request));
+        assertThrows(CategoryAlreadyExistsException.class, () -> categoryService.create(request, adminActor()));
     }
 
     @Test
@@ -75,7 +85,7 @@ class CategoryServiceTest {
         when(categoryRepository.save(any(Category.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         CategoryUpdateRequest request = new CategoryUpdateRequest("New", "New desc", false);
-        CategoryResponse response = categoryService.update(5L, request);
+        CategoryResponse response = categoryService.update(5L, request, adminActor());
 
         ArgumentCaptor<Category> captor = ArgumentCaptor.forClass(Category.class);
         verify(categoryRepository).save(captor.capture());

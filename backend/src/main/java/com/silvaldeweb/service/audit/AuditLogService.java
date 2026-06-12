@@ -7,8 +7,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.silvaldeweb.dto.audit.AuditLogResponse;
 import com.silvaldeweb.model.audit.Action;
@@ -27,7 +28,6 @@ public class AuditLogService {
 
     private final AuditLogRepository auditLogRepository;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(User actor, Action action, String entityName, Long entityId, String metadata, String ipAddress) {
         if (actor == null) {
             log.debug("Skipping audit log: no actor (entity={} id={} action={})", entityName, entityId, action);
@@ -38,6 +38,27 @@ public class AuditLogService {
             return;
         }
 
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            registerAfterCommit(actor, action, entityName, entityId, metadata, ipAddress);
+        } else {
+            persist(actor, action, entityName, entityId, metadata, ipAddress);
+        }
+    }
+
+    private void registerAfterCommit(User actor, Action action, String entityName, Long entityId,
+                                      String metadata, String ipAddress) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                persist(actor, action, entityName, entityId, metadata, ipAddress);
+            }
+        });
+        log.debug("Audit log scheduled for afterCommit actor={} action={} entity={}#{}",
+                actor.getEmail(), action, entityName, entityId);
+    }
+
+    private void persist(User actor, Action action, String entityName, Long entityId,
+                          String metadata, String ipAddress) {
         try {
             AuditLog auditLog = AuditLog.builder()
                     .actor(actor)
@@ -48,7 +69,8 @@ public class AuditLogService {
                     .ipAddress(ipAddress)
                     .build();
             auditLogRepository.save(auditLog);
-            log.debug("Audit log recorded actor={} action={} entity={}#{}", actor.getEmail(), action, entityName, entityId);
+            log.debug("Audit log recorded actor={} action={} entity={}#{}",
+                    actor.getEmail(), action, entityName, entityId);
         } catch (RuntimeException exception) {
             log.error("Failed to record audit log actor={} action={} entity={}#{}",
                     actor.getEmail(), action, entityName, entityId, exception);

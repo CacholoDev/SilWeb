@@ -25,6 +25,7 @@ import com.silvaldeweb.exception.user.UserNotFoundException;
 import com.silvaldeweb.model.user.Role;
 import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.user.UserRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
@@ -35,8 +36,15 @@ class UserServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private UserService userService;
+
+    private User adminActor() {
+        return User.builder().id(1L).email("admin@example.com").role(Role.ADMIN).build();
+    }
 
     @Test
     void createHashesPasswordAndPersists() {
@@ -57,7 +65,7 @@ class UserServiceTest {
             return u;
         });
 
-        UserResponse response = userService.create(request);
+        UserResponse response = userService.create(request, adminActor());
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -91,7 +99,7 @@ class UserServiceTest {
             return u;
         });
 
-        userService.create(request);
+        userService.create(request, adminActor());
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -111,7 +119,7 @@ class UserServiceTest {
         );
         when(userRepository.existsByEmailIgnoreCase("dup@example.com")).thenReturn(true);
 
-        assertThrows(UserAlreadyExistsException.class, () -> userService.create(request));
+        assertThrows(UserAlreadyExistsException.class, () -> userService.create(request, adminActor()));
         verify(userRepository, never()).save(any(User.class));
         verify(passwordEncoder, never()).encode(any());
     }
@@ -139,7 +147,7 @@ class UserServiceTest {
                 null
         );
 
-        userService.update(1L, request);
+        userService.update(1L, request, adminActor());
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -172,7 +180,7 @@ class UserServiceTest {
                 null
         );
 
-        userService.update(1L, request);
+        userService.update(1L, request, adminActor());
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -202,7 +210,7 @@ class UserServiceTest {
                 null
         );
 
-        assertThrows(UserAlreadyExistsException.class, () -> userService.update(1L, request));
+        assertThrows(UserAlreadyExistsException.class, () -> userService.update(1L, request, adminActor()));
     }
 
     @Test
@@ -216,6 +224,6 @@ class UserServiceTest {
     void deleteThrowsWhenNotFound() {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThrows(UserNotFoundException.class, () -> userService.delete(99L));
+        assertThrows(UserNotFoundException.class, () -> userService.delete(99L, adminActor()));
     }
 }

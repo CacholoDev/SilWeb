@@ -86,7 +86,7 @@ class DbUserDetailsServiceTest {
         when(userRepository.findByEmailIgnoreCase("inactive@example.com"))
                 .thenReturn(Optional.of(user));
 
-        assertThrows(UsernameNotFoundException.class,
+        assertThrows(org.springframework.security.authentication.DisabledException.class,
                 () -> service.loadUserByUsername("inactive@example.com"));
     }
 }

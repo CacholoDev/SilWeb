@@ -7,7 +7,9 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,7 +80,8 @@ public class OrderService {
             Product product = productRepository.findById(itemRequest.productId())
                     .orElseThrow(() -> new ProductNotFoundException(itemRequest.productId()));
 
-            BigDecimal lineTotal = itemRequest.unitPrice()
+            BigDecimal unitPrice = product.getPrice();
+            BigDecimal lineTotal = unitPrice
                     .multiply(BigDecimal.valueOf(itemRequest.quantity()))
                     .setScale(2, RoundingMode.HALF_UP);
 
@@ -86,7 +89,7 @@ public class OrderService {
                     .order(order)
                     .productId(product.getId())
                     .quantity(itemRequest.quantity())
-                    .unitPrice(itemRequest.unitPrice())
+                    .unitPrice(unitPrice)
                     .lineTotal(lineTotal)
                     .build();
             order.getItems().add(item);
@@ -108,8 +111,7 @@ public class OrderService {
     public List<OrderResponse> list(Long authenticatedUserId, boolean isAdmin, OrderStatus status) {
         log.info("Listing orders userId={} isAdmin={} status={}", authenticatedUserId, isAdmin, status);
         List<Order> orders = isAdmin
-                ? (status == null ? orderRepository.findAll() : orderRepository.findAll().stream()
-                        .filter(o -> o.getStatus() == status).toList())
+                ? (status == null ? orderRepository.findAll() : orderRepository.findByStatus(status))
                 : (status == null
                         ? orderRepository.findByCustomerId(authenticatedUserId)
                         : orderRepository.findByCustomerIdAndStatus(authenticatedUserId, status));
@@ -158,6 +160,8 @@ public class OrderService {
                     "Only PENDING orders can be paid. Current status: " + order.getStatus());
         }
 
+        List<Product> updatedProducts = validateAndDecrementStock(order);
+
         Payment payment = Payment.builder()
                 .order(order)
                 .method(request.method())
@@ -172,9 +176,38 @@ public class OrderService {
 
         Order saved = orderRepository.save(order);
         auditLogService.record(actor, Action.STATE_CHANGE, "Order", saved.getId(),
-                previousStatus + " -> PAID via " + request.method(), null);
-        log.info("Order paid id={} amount={}", saved.getId(), saved.getTotal());
+                previousStatus + " -> PAID via " + request.method()
+                        + " stockDecremented=" + updatedProducts.size(), null);
+        log.info("Order paid id={} amount={} stockUpdated={}", saved.getId(), saved.getTotal(), updatedProducts.size());
         return toResponse(saved);
+    }
+
+    private List<Product> validateAndDecrementStock(Order order) {
+        if (order.getItems() == null || order.getItems().isEmpty()) {
+            return List.of();
+        }
+        List<Long> productIds = order.getItems().stream()
+                .map(OrderItem::getProductId)
+                .distinct()
+                .toList();
+        List<Product> products = productRepository.findAllById(productIds);
+        Map<Long, Product> productMap = products.stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
+        for (OrderItem item : order.getItems()) {
+            Product product = productMap.get(item.getProductId());
+            if (product == null || !product.getActive()) {
+                throw new com.silvaldeweb.exception.product.ProductNotFoundException(item.getProductId());
+            }
+            if (product.getStock() < item.getQuantity()) {
+                throw new com.silvaldeweb.exception.cart.InsufficientStockException(
+                        product.getId(), item.getQuantity(), product.getStock());
+            }
+            product.setStock(product.getStock() - item.getQuantity());
+            log.debug("Decremented stock productId={} newStock={} for orderId={}",
+                    product.getId(), product.getStock(), order.getId());
+        }
+        return products;
     }
 
     @Transactional
@@ -248,12 +281,36 @@ public class OrderService {
         }
 
         OrderStatus previousStatus = order.getStatus();
+        if (previousStatus == OrderStatus.PAID) {
+            restoreStockForOrder(order);
+        }
         order.setStatus(OrderStatus.CANCELLED);
         Order saved = orderRepository.save(order);
         auditLogService.record(actor, Action.STATE_CHANGE, "Order", saved.getId(),
-                previousStatus + " -> CANCELLED", null);
-        log.info("Order cancelled id={}", saved.getId());
+                previousStatus + " -> CANCELLED" + (previousStatus == OrderStatus.PAID ? " (stock restored)" : ""), null);
+        log.info("Order cancelled id={} previousStatus={}", saved.getId(), previousStatus);
         return toResponse(saved);
+    }
+
+    private void restoreStockForOrder(Order order) {
+        if (order.getItems() == null || order.getItems().isEmpty()) {
+            return;
+        }
+        List<Long> productIds = order.getItems().stream()
+                .map(OrderItem::getProductId)
+                .distinct()
+                .toList();
+        List<Product> products = productRepository.findAllById(productIds);
+        Map<Long, Product> productMap = products.stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+        for (OrderItem item : order.getItems()) {
+            Product product = productMap.get(item.getProductId());
+            if (product != null) {
+                product.setStock(product.getStock() + item.getQuantity());
+                log.debug("Restored stock productId={} +{} newStock={} for cancelled orderId={}",
+                        product.getId(), item.getQuantity(), product.getStock(), order.getId());
+            }
+        }
     }
 
     @Transactional

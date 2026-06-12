@@ -24,13 +24,13 @@ public class DbUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
 
         if (!user.getActive()) {
-            throw new UsernameNotFoundException("User is inactive: " + email);
+            throw new org.springframework.security.authentication.DisabledException(
+                    "User is inactive: " + email);
         }
 
         return org.springframework.security.core.userdetails.User.withUsername(user.getEmail())
                 .password(user.getPassword())
                 .authorities(List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())))
-                .disabled(!user.getActive())
                 .build();
     }
 }

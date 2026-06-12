@@ -36,7 +36,6 @@ import com.silvaldeweb.model.cart.CartStatus;
 import com.silvaldeweb.model.product.Product;
 import com.silvaldeweb.model.user.Role;
 import com.silvaldeweb.model.user.User;
-import com.silvaldeweb.repository.cart.CartItemRepository;
 import com.silvaldeweb.repository.cart.CartRepository;
 import com.silvaldeweb.repository.product.ProductRepository;
 import com.silvaldeweb.repository.user.UserRepository;
@@ -47,9 +46,6 @@ class CartServiceTest {
 
     @Mock
     private CartRepository cartRepository;
-
-    @Mock
-    private CartItemRepository cartItemRepository;
 
     @Mock
     private UserRepository userRepository;

@@ -190,7 +190,10 @@ class OrderServiceTest {
     void payTransitionsPendingToPaidAndStoresPayment() {
         User user = sampleUser(1L);
         Order order = sampleOrder(10L, user, OrderStatus.PENDING);
+        Product product = sampleProduct(1L, new BigDecimal("10.00"));
+        product.setStock(50);
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(productRepository.findAllById(List.of(1L))).thenReturn(List.of(product));
         when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
 
         OrderResponse response = orderService.pay(10L, 1L, false,
@@ -200,6 +203,36 @@ class OrderServiceTest {
         assertNotNull(response.payment());
         assertEquals(PaymentMethod.CARD, response.payment().method());
         assertEquals(PaymentStatus.CAPTURED, response.payment().status());
+    }
+
+    @Test
+    void payDecrementsProductStock() {
+        User user = sampleUser(1L);
+        Order order = sampleOrder(10L, user, OrderStatus.PENDING);
+        Product product = sampleProduct(1L, new BigDecimal("10.00"));
+        product.setStock(100);
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(productRepository.findAllById(List.of(1L))).thenReturn(List.of(product));
+        when(orderRepository.save(any(Order.class))).thenAnswer(i -> i.getArgument(0));
+
+        orderService.pay(10L, 1L, false,
+                new OrderPayRequest(PaymentMethod.CARD, null), user);
+
+        assertEquals(98, product.getStock());
+    }
+
+    @Test
+    void payRejectsWhenInsufficientStock() {
+        User user = sampleUser(1L);
+        Order order = sampleOrder(10L, user, OrderStatus.PENDING);
+        Product product = sampleProduct(1L, new BigDecimal("10.00"));
+        product.setStock(1);
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(productRepository.findAllById(List.of(1L))).thenReturn(List.of(product));
+
+        assertThrows(com.silvaldeweb.exception.cart.InsufficientStockException.class,
+                () -> orderService.pay(10L, 1L, false,
+                        new OrderPayRequest(PaymentMethod.CARD, null), user));
     }
 
     @Test

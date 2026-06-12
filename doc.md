@@ -325,7 +325,7 @@ Todas las rutas requieren `Authorization: Bearer <token>` excepto `POST /api/aut
 - `GET /api/orders` (USER/ADMIN) listar — `?status=PENDING|PAID|SHIPPED|DELIVERED|CANCELLED`. USER ve solo sus pedidos; ADMIN ve todos.
 - `GET /api/orders/{id}` (USER/ADMIN) detalle — USER solo si es owner; ADMIN siempre.
 - `PUT /api/orders/{id}` (USER/ADMIN) actualizar `shippingAddress` — solo en `PENDING`.
-- `PATCH /api/orders/{id}/pay` (USER/ADMIN) pagar — body `{method, providerReference}`. Transición `PENDING → PAID`. Solo owner o ADMIN.
+- `PATCH /api/orders/{id}/pay` (USER/ADMIN) pagar — body `{method, providerReference}`. Transición `PENDING → PAID`. **Valida y descuenta stock real en la misma transacción** (`Product.stock -= OrderItem.quantity` por cada item). Si algún item no tiene stock suficiente → 409 con `productId`/`requested`/`available` en el body (`InsufficientStockException`). Solo owner o ADMIN.
 - `PATCH /api/orders/{id}/ship` (USER/ADMIN) enviar — body `{carrier, trackingNumber}`. Transición `PAID → SHIPPED`. Solo owner o ADMIN.
 - `PATCH /api/orders/{id}/deliver` (USER/ADMIN) marcar entregado — transita `SHIPPED → DELIVERED` y actualiza `shipment.deliveredAt`.
 - `PATCH /api/orders/{id}/cancel` (USER/ADMIN) cancelar — solo si está en `PENDING` o `PAID`. Bloqueado en `SHIPPED`/`DELIVERED`/`CANCELLED`.
@@ -387,14 +387,18 @@ Respuesta:
 - Contraseñas con BCrypt.
 - Roles vía enum `Role` (en entidades) y authorities `ROLE_*` (en JWT).
 - Errores sin filtrar stack traces al cliente (`spring.web.error.include-stacktrace=never`).
+- **Autorización por rol en `SecurityConfig`**: los endpoints de mutación (`POST`/`PUT`/`PATCH`/`DELETE`) en `/api/users`, `/api/products`, `/api/categories` son **solo ADMIN** (matchers en `SecurityConfig.authorizeHttpRequests`). Los GET admiten USER y ADMIN. Los endpoints de `/api/orders` admiten USER (solo sobre sus propios orders, ownership check en `OrderService.enforceOwnership`) y ADMIN (bypass). `/api/carts/**` y `/api/addresses/**` admiten USER y ADMIN. `/api/audit-logs/**` es solo ADMIN. Esto previene escalada de privilegios (un USER no puede ascender a otro a ADMIN ni borrar el catálogo).
+- **Validación de `unitPrice` en `OrderService.create`**: el `unitPrice` se lee SIEMPRE de `Product.price` (la BD), nunca del body. Un cliente no puede comprar productos a un precio distinto al real.
+- **Revertir stock en cancel**: si un `Order` se cancela estando en `PAID`, se devuelve el stock a `Product.stock` automáticamente (mismo número de unidades por cada item).
+- **Audit log registrado tras commit**: `AuditLogService.record(...)` usa `TransactionSynchronizationManager.registerSynchronization(...).afterCommit()` para evitar "DELETEs fantasma" en el log cuando una operación falla al hacer commit. Si la transacción externa hace rollback, el log no se persiste.
 
 ## 12. Roadmap (v1)
 
 - **Admin**: gestión productos, categorías, stock, pedidos, clientes, dashboard.
 - **Clientes**: registro, login, perfil, direcciones, historial, carrito, pedidos.
 - **Métricas**: ventas totales/por mes/por categoría, productos más vendidos, clientes más activos, ticket medio, pedidos pendientes, evolución de ingresos.
-- **Hecho**: entidad `User` con `UserDetailsService` DB-backed (`DbUserDetailsService`), entidad `Address`, entidad `Order` + `OrderItem` + `Payment` + `Shipment`, entidad `Cart` + `CartItem` con checkout, `AuditLog` append-only con `Action` enum y filtros paginados, Swagger UI 3.0.3 con JWT bearer.
-- **Pendiente**: integración real con un payment provider (Stripe/PayPal) para `Payment.providerReference`, decremento de `Product.stock` al pagar (validado en checkout pero NO descontado), webhooks de shipment, persistencia de `Cart` para carritos abandonados (`status=ABANDONED` con job que lo asigne tras X días sin actividad), extender `AuditLog.record(...)` a `ProductService.delete`, `UserService.delete`, `CategoryService.delete` y `AuthService.login` (ahora mismo solo audita acciones de `Order` y los `STATE_CHANGE`).
+- **Hecho**: entidad `User` con `UserDetailsService` DB-backed (`DbUserDetailsService`), entidad `Address`, entidad `Order` + `OrderItem` + `Payment` + `Shipment`, entidad `Cart` + `CartItem` con checkout, `AuditLog` append-only con `Action` enum y filtros paginados, stock real validado y descontado en `OrderService.pay()`, Swagger UI 3.0.3 con JWT bearer.
+- **Pendiente**: integración real con un payment provider (Stripe/PayPal) para `Payment.providerReference` (actualmente `providerReference` es un String libre que se acepta en el body), webhooks de shipment, persistencia de `Cart` para carritos abandonados (`status=ABANDONED` con job que lo asigne tras X días sin actividad), la API de `AuditLog` con `ipAddress` y `actorRole` (hoy no se loguea la IP del cliente y solo se loguean acciones de ADMIN), tests de concurrencia (dos checkouts simultáneos del mismo producto con stock justo), hardening de CORS para entornos LAN (el default de `application-prod.properties` es `http://localhost`).
 
 ## 13. Cómo se conecta la aplicación
 

@@ -23,8 +23,10 @@ import com.silvaldeweb.exception.category.CategoryNotFoundException;
 import com.silvaldeweb.exception.product.ProductAlreadyExistsException;
 import com.silvaldeweb.model.category.Category;
 import com.silvaldeweb.model.product.Product;
+import com.silvaldeweb.model.user.User;
 import com.silvaldeweb.repository.category.CategoryRepository;
 import com.silvaldeweb.repository.product.ProductRepository;
+import com.silvaldeweb.service.audit.AuditLogService;
 
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
@@ -35,42 +37,37 @@ class ProductServiceTest {
     @Mock
     private CategoryRepository categoryRepository;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     @InjectMocks
     private ProductService productService;
+
+    private User adminActor() {
+        return User.builder().id(1L).email("admin@example.com").build();
+    }
 
     @Test
     void createThrowsWhenSkuExists() {
         ProductCreateRequest request = new ProductCreateRequest(
-                "Lamp",
-                "SKU-01",
-                "Desc",
-                BigDecimal.valueOf(9.99),
-                10,
-                1L,
-                true
+                "Lamp", "SKU-01", "Desc",
+                BigDecimal.valueOf(9.99), 10, 1L, true
         );
-
         when(productRepository.existsBySkuIgnoreCase("SKU-01")).thenReturn(true);
 
-        assertThrows(ProductAlreadyExistsException.class, () -> productService.create(request));
+        assertThrows(ProductAlreadyExistsException.class, () -> productService.create(request, adminActor()));
     }
 
     @Test
     void createThrowsWhenCategoryMissing() {
         ProductCreateRequest request = new ProductCreateRequest(
-                "Lamp",
-                "SKU-01",
-                "Desc",
-                BigDecimal.valueOf(9.99),
-                10,
-                1L,
-                true
+                "Lamp", "SKU-01", "Desc",
+                BigDecimal.valueOf(9.99), 10, 1L, true
         );
-
         when(productRepository.existsBySkuIgnoreCase("SKU-01")).thenReturn(false);
         when(categoryRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThrows(CategoryNotFoundException.class, () -> productService.create(request));
+        assertThrows(CategoryNotFoundException.class, () -> productService.create(request, adminActor()));
     }
 
     @Test
@@ -82,6 +79,7 @@ class ProductServiceTest {
                 .sku("SKU-01")
                 .price(BigDecimal.valueOf(5.00))
                 .stock(5)
+                .active(true)
                 .category(category)
                 .build();
 
@@ -91,16 +89,11 @@ class ProductServiceTest {
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ProductUpdateRequest request = new ProductUpdateRequest(
-                "New",
-                "SKU-02",
-                "Desc",
-                BigDecimal.valueOf(12.50),
-                7,
-                2L,
-                false
+                "New", "SKU-02", "Desc",
+                BigDecimal.valueOf(12.50), 7, 2L, false
         );
 
-        ProductResponse response = productService.update(10L, request);
+        ProductResponse response = productService.update(10L, request, adminActor());
 
         ArgumentCaptor<Product> captor = ArgumentCaptor.forClass(Product.class);
         verify(productRepository).save(captor.capture());

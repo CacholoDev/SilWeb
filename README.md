@@ -31,7 +31,7 @@ Login por defecto (en `.env`):
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"<APP_ADMIN_PASSWORD>"}'
+  -d '{"email":"admin@example.com","password":"<APP_ADMIN_PASSWORD>"}'
 ```
 
 ## Dev local sin Docker
