@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.order;
 
-public class OrderInvalidStateException extends RuntimeException {
+import org.springframework.http.HttpStatus;
 
-    public OrderInvalidStateException(String message) {
-        super(message);
+import com.silvaldeweb.exception.BusinessException;
+
+public class OrderInvalidStateException extends BusinessException {
+
+    public OrderInvalidStateException(String detail) {
+        super(HttpStatus.UNPROCESSABLE_CONTENT, "Order invalid state", detail);
     }
 }

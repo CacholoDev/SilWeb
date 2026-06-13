@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.cart;
 
-public class CartNotFoundException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class CartNotFoundException extends BusinessException {
 
     public CartNotFoundException(Long id) {
-        super("Cart with id " + id + " was not found.");
+        super(HttpStatus.NOT_FOUND, "Cart not found", "Cart with id " + id + " was not found.");
     }
 }

@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.category;
 
-public class CategoryNotFoundException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class CategoryNotFoundException extends BusinessException {
 
     public CategoryNotFoundException(Long id) {
-        super("Category with id " + id + " was not found.");
+        super(HttpStatus.NOT_FOUND, "Category not found", "Category with id " + id + " was not found.");
     }
 }

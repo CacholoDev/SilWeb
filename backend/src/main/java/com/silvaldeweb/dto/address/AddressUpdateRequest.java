@@ -1,7 +1,6 @@
 package com.silvaldeweb.dto.address;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -30,9 +29,6 @@ public record AddressUpdateRequest(
         @Size(max = 100, message = "El país no puede tener más de 100 caracteres")
         String country,
 
-        Boolean isDefault,
-
-        @NotNull(message = "El usuario es obligatorio")
-        Long userId
+        Boolean isDefault
 ) {
 }

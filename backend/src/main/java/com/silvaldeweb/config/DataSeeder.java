@@ -19,6 +19,10 @@ public class DataSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
 
+    private static final String DEFAULT_ADMIN_PASSWORD = "change_me_admin_password";
+    private static final String DEFAULT_CUSTOMER_PASSWORD = "change_me_customer_password";
+    private static final int MIN_PASSWORD_LENGTH = 12;
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final String adminEmail;
@@ -32,10 +36,10 @@ public class DataSeeder implements CommandLineRunner {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             @Value("${app.security.users.admin.email:admin@example.com}") String adminEmail,
-            @Value("${app.security.users.admin.password:change_me_admin_password}") String adminPassword,
+            @Value("${app.security.users.admin.password:}") String adminPassword,
             @Value("${app.security.users.admin.roles:ADMIN}") String adminRoleValue,
             @Value("${app.security.users.customer.email:customer@example.com}") String customerEmail,
-            @Value("${app.security.users.customer.password:change_me_customer_password}") String customerPassword,
+            @Value("${app.security.users.customer.password:}") String customerPassword,
             @Value("${app.security.users.customer.roles:USER}") String customerRoleValue
     ) {
         this.userRepository = userRepository;
@@ -46,6 +50,32 @@ public class DataSeeder implements CommandLineRunner {
         this.customerEmail = customerEmail;
         this.customerPassword = customerPassword;
         this.customerRoleValue = customerRoleValue;
+        validateSeedPasswords();
+    }
+
+    private void validateSeedPasswords() {
+        if (DEFAULT_ADMIN_PASSWORD.equals(adminPassword)) {
+            throw new IllegalStateException(
+                    "APP_ADMIN_PASSWORD is the development default (change_me_admin_password). "
+                            + "This is unsafe. Set APP_ADMIN_PASSWORD in your .env to a random string of at least "
+                            + MIN_PASSWORD_LENGTH + " chars.");
+        }
+        if (DEFAULT_CUSTOMER_PASSWORD.equals(customerPassword)) {
+            throw new IllegalStateException(
+                    "APP_CUSTOMER_PASSWORD is the development default (change_me_customer_password). "
+                            + "This is unsafe. Set APP_CUSTOMER_PASSWORD in your .env to a random string of at least "
+                            + MIN_PASSWORD_LENGTH + " chars.");
+        }
+        if (adminPassword == null || adminPassword.length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalStateException(
+                    "APP_ADMIN_PASSWORD must be at least " + MIN_PASSWORD_LENGTH + " characters. "
+                            + "Generate one with: openssl rand -base64 24 | head -c 32");
+        }
+        if (customerPassword == null || customerPassword.length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalStateException(
+                    "APP_CUSTOMER_PASSWORD must be at least " + MIN_PASSWORD_LENGTH + " characters. "
+                            + "Generate one with: openssl rand -base64 24 | head -c 32");
+        }
     }
 
     @Override

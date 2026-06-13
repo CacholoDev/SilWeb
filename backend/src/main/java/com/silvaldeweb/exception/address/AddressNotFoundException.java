@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.address;
 
-public class AddressNotFoundException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class AddressNotFoundException extends BusinessException {
 
     public AddressNotFoundException(Long id) {
-        super("Address with id " + id + " was not found.");
+        super(HttpStatus.NOT_FOUND, "Address not found", "Address with id " + id + " was not found.");
     }
 }

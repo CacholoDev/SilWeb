@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.order;
 
-public class OrderAlreadyExistsException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class OrderAlreadyExistsException extends BusinessException {
 
     public OrderAlreadyExistsException(String orderNumber) {
-        super("Order with number '" + orderNumber + "' already exists.");
+        super(HttpStatus.CONFLICT, "Order conflict", "Order with number '" + orderNumber + "' already exists.");
     }
 }

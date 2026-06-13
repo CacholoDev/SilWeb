@@ -122,7 +122,7 @@ class OrderControllerTest {
                 .thenReturn(sampleResponse(50L));
 
         OrderCreateRequest request = new OrderCreateRequest(
-                List.of(new OrderItemRequest(10L, 2, new BigDecimal("10.00"))),
+                List.of(new OrderItemRequest(10L, 2)),
                 "Calle 1, Madrid"
         );
 

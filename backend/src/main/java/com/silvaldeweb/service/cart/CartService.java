@@ -148,8 +148,7 @@ public class CartService {
         List<OrderItemRequest> orderItems = cart.getItems().stream()
                 .map(item -> new OrderItemRequest(
                         item.getProductId(),
-                        item.getQuantity(),
-                        products.get(item.getProductId()).getPrice()
+                        item.getQuantity()
                 ))
                 .toList();
 

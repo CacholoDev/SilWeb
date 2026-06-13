@@ -26,7 +26,9 @@ import lombok.Setter;
 import lombok.ToString;
 
 @Entity
-@Table(name = "cart_items")
+@Table(name = "cart_items", uniqueConstraints = {
+        @jakarta.persistence.UniqueConstraint(name = "uk_cart_items_cart_product", columnNames = {"cart_id", "product_id"})
+})
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter

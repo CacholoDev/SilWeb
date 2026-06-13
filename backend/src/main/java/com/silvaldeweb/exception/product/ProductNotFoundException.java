@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.product;
 
-public class ProductNotFoundException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class ProductNotFoundException extends BusinessException {
 
     public ProductNotFoundException(Long id) {
-        super("Product with id " + id + " was not found.");
+        super(HttpStatus.NOT_FOUND, "Product not found", "Product with id " + id + " was not found.");
     }
 }

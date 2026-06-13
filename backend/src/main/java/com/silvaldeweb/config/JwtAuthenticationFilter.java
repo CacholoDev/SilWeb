@@ -55,7 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             .map(GrantedAuthority.class::cast)
                             .toList();
 
-                    log.info("JWT valid for {} {} as user='{}' authorities={}",
+                    log.debug("JWT valid for {} {} as user='{}' authorities={}",
                             request.getMethod(), request.getRequestURI(), userDetails.getUsername(), authorities);
 
                     UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(

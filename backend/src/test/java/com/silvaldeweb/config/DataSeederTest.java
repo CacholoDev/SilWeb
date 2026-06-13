@@ -18,6 +18,9 @@ import com.silvaldeweb.repository.user.UserRepository;
 @ExtendWith(MockitoExtension.class)
 class DataSeederTest {
 
+    private static final String TEST_ADMIN_PASSWORD = "AdminStrongPass2024!";
+    private static final String TEST_CUSTOMER_PASSWORD = "CustomerStrongPass2024!";
+
     @Mock
     private UserRepository userRepository;
 
@@ -33,15 +36,15 @@ class DataSeederTest {
 
         DataSeeder seeder = new DataSeeder(
                 userRepository, passwordEncoder,
-                "admin@example.com", "adminPass", "ADMIN",
-                "customer@example.com", "customerPass", "USER"
+                "admin@example.com", TEST_ADMIN_PASSWORD, "ADMIN",
+                "customer@example.com", TEST_CUSTOMER_PASSWORD, "USER"
         );
 
         seeder.run();
 
         verify(userRepository, times(2)).save(any(User.class));
-        verify(passwordEncoder).encode("adminPass");
-        verify(passwordEncoder).encode("customerPass");
+        verify(passwordEncoder).encode(TEST_ADMIN_PASSWORD);
+        verify(passwordEncoder).encode(TEST_CUSTOMER_PASSWORD);
     }
 
     @Test
@@ -51,8 +54,8 @@ class DataSeederTest {
 
         DataSeeder seeder = new DataSeeder(
                 userRepository, passwordEncoder,
-                "admin@example.com", "adminPass", "ADMIN",
-                "customer@example.com", "customerPass", "USER"
+                "admin@example.com", TEST_ADMIN_PASSWORD, "ADMIN",
+                "customer@example.com", TEST_CUSTOMER_PASSWORD, "USER"
         );
 
         seeder.run();

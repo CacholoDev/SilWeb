@@ -110,7 +110,7 @@ class OrderServiceTest {
         User user = sampleUser(1L);
         Product product = sampleProduct(10L, new BigDecimal("10.00"));
         OrderCreateRequest request = new OrderCreateRequest(
-                List.of(new OrderItemRequest(10L, 2, new BigDecimal("10.00"))),
+                List.of(new OrderItemRequest(10L, 2)),
                 "Calle Mayor 1, Madrid"
         );
 
@@ -135,7 +135,7 @@ class OrderServiceTest {
     @Test
     void createThrowsUserNotFoundWhenUserMissing() {
         OrderCreateRequest request = new OrderCreateRequest(
-                List.of(new OrderItemRequest(10L, 1, new BigDecimal("10.00"))),
+                List.of(new OrderItemRequest(10L, 1)),
                 "Calle 1"
         );
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
@@ -149,7 +149,7 @@ class OrderServiceTest {
     void createThrowsProductNotFoundWhenItemProductMissing() {
         User user = sampleUser(1L);
         OrderCreateRequest request = new OrderCreateRequest(
-                List.of(new OrderItemRequest(999L, 1, new BigDecimal("10.00"))),
+                List.of(new OrderItemRequest(999L, 1)),
                 "Calle 1"
         );
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));

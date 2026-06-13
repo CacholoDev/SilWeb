@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.product;
 
-public class ProductAlreadyExistsException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class ProductAlreadyExistsException extends BusinessException {
 
     public ProductAlreadyExistsException(String sku) {
-        super("Product with SKU '" + sku + "' already exists.");
+        super(HttpStatus.CONFLICT, "Product conflict", "Product with sku '" + sku + "' already exists.");
     }
 }

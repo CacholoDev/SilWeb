@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,10 +30,10 @@ public class AddressService {
     private final UserRepository userRepository;
 
     @Transactional
-    public AddressResponse create(AddressCreateRequest request) {
-        log.info("Creating address userId={} postalCode='{}'", request.userId(), request.postalCode());
-        User user = userRepository.findById(request.userId())
-                .orElseThrow(() -> new UserNotFoundException(request.userId()));
+    public AddressResponse create(User actor, AddressCreateRequest request) {
+        log.info("Creating address userId={} postalCode='{}'", actor.getId(), request.postalCode());
+        User user = userRepository.findById(actor.getId())
+                .orElseThrow(() -> new UserNotFoundException(actor.getId()));
 
         Address address = Address.builder()
                 .fullName(request.fullName())
@@ -51,30 +52,41 @@ public class AddressService {
     }
 
     @Transactional(readOnly = true)
-    public List<AddressResponse> list(Long userId) {
-        log.info("Listing addresses userId={}", userId);
-        List<Address> addresses = userId == null
-                ? addressRepository.findAll()
-                : addressRepository.findByUserId(userId);
+    public List<AddressResponse> list(User actor, boolean isAdmin, Long userId) {
+        if (isAdmin) {
+            log.info("ADMIN listing all addresses requestedBy userId={} filterUserId={}", actor.getId(), userId);
+            List<Address> addresses = userId == null
+                    ? addressRepository.findAll()
+                    : addressRepository.findByUserId(userId);
+            log.info("Found {} addresses", addresses.size());
+            return addresses.stream().map(this::toResponse).toList();
+        }
+        log.info("Listing addresses for owner userId={}", actor.getId());
+        List<Address> addresses = addressRepository.findByUserId(actor.getId());
         log.info("Found {} addresses", addresses.size());
         return addresses.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
-    public AddressResponse get(Long id) {
-        log.info("Getting address id={}", id);
-        return toResponse(findById(id));
+    public AddressResponse get(User actor, boolean isAdmin, Long id) {
+        log.info("Getting address id={} userId={} isAdmin={}", id, actor.getId(), isAdmin);
+        Address address = findById(id);
+        if (!isAdmin && !address.getUser().getId().equals(actor.getId())) {
+            log.warn("Access denied: userId={} tried to read address id={} owned by userId={}",
+                    actor.getId(), id, address.getUser().getId());
+            throw new AccessDeniedException("You can only access your own addresses.");
+        }
+        return toResponse(address);
     }
 
     @Transactional
-    public AddressResponse update(Long id, AddressUpdateRequest request) {
-        log.info("Updating address id={}", id);
+    public AddressResponse update(User actor, boolean isAdmin, Long id, AddressUpdateRequest request) {
+        log.info("Updating address id={} userId={} isAdmin={}", id, actor.getId(), isAdmin);
         Address address = findById(id);
-
-        if (!address.getUser().getId().equals(request.userId())) {
-            User newUser = userRepository.findById(request.userId())
-                    .orElseThrow(() -> new UserNotFoundException(request.userId()));
-            address.setUser(newUser);
+        if (!isAdmin && !address.getUser().getId().equals(actor.getId())) {
+            log.warn("Access denied: userId={} tried to update address id={} owned by userId={}",
+                    actor.getId(), id, address.getUser().getId());
+            throw new AccessDeniedException("You can only update your own addresses.");
         }
 
         address.setFullName(request.fullName());
@@ -93,10 +105,15 @@ public class AddressService {
     }
 
     @Transactional
-    public void delete(Long id) {
-        log.info("Deleting address id={}", id);
+    public void delete(User actor, boolean isAdmin, Long id) {
+        log.info("Deleting address id={} userId={} isAdmin={}", id, actor.getId(), isAdmin);
         try {
             Address address = findById(id);
+            if (!isAdmin && !address.getUser().getId().equals(actor.getId())) {
+                log.warn("Access denied: userId={} tried to delete address id={} owned by userId={}",
+                        actor.getId(), id, address.getUser().getId());
+                throw new AccessDeniedException("You can only delete your own addresses.");
+            }
             addressRepository.delete(address);
             log.info("Address id={} deleted", id);
         } catch (AddressNotFoundException exception) {

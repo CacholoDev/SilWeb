@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.category;
 
-public class CategoryAlreadyExistsException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class CategoryAlreadyExistsException extends BusinessException {
 
     public CategoryAlreadyExistsException(String name) {
-        super("Category with name '" + name + "' already exists.");
+        super(HttpStatus.CONFLICT, "Category conflict", "Category with name '" + name + "' already exists.");
     }
 }

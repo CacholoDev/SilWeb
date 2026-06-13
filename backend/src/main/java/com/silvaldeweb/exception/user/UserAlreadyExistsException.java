@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.user;
 
-public class UserAlreadyExistsException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class UserAlreadyExistsException extends BusinessException {
 
     public UserAlreadyExistsException(String email) {
-        super("User with email '" + email + "' already exists.");
+        super(HttpStatus.CONFLICT, "User conflict", "User with email '" + email + "' already exists.");
     }
 }

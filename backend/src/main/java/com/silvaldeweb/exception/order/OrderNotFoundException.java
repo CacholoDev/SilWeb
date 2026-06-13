@@ -1,8 +1,12 @@
 package com.silvaldeweb.exception.order;
 
-public class OrderNotFoundException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+import com.silvaldeweb.exception.BusinessException;
+
+public class OrderNotFoundException extends BusinessException {
 
     public OrderNotFoundException(Long id) {
-        super("Order with id " + id + " was not found.");
+        super(HttpStatus.NOT_FOUND, "Order not found", "Order with id " + id + " was not found.");
     }
 }
